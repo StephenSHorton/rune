@@ -482,6 +482,8 @@ impl<S: 'static> Host<S> {
                 l.window.request_redraw();
             }
             WindowEvent::Touch(touch) => {
+                #[cfg(target_os = "android")]
+                if touch.phase == TouchPhase::Started { crate::platform::android::ime::touched(); }
                 crate::window::touch(rt, &touch, scale);
                 l.window.request_redraw();
             }

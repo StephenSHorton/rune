@@ -49,6 +49,15 @@ class RuneInputView(private val activity: RuneActivity) : View(activity) {
 
     override fun onCheckIsTextEditor() = true
 
+    /** Back from the background: the window's focus hid the keyboard; bring it back. */
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (hasWindowFocus && shown) {
+            requestFocus()
+            imm.showSoftInput(this, 0)
+        }
+    }
+
     override fun onCreateInputConnection(out: EditorInfo): InputConnection {
         out.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or
             InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -62,7 +71,7 @@ class RuneInputView(private val activity: RuneActivity) : View(activity) {
         return connection
     }
 
-    /** Rune's side, on the UI thread: `{key, text, base, anchor, focus, show, applied}`. */
+    /** Rune's side, on the UI thread: `{key, text, base, anchor, focus, show, reshow, applied}`. */
     fun sync(json: String) {
         val o = JSONObject(json)
         val newKey = o.getString("key")
@@ -85,7 +94,8 @@ class RuneInputView(private val activity: RuneActivity) : View(activity) {
             }
         }
         val show = o.getBoolean("show")
-        if (show && !shown) {
+        // `reshow`: a tap on Rune while a field has focus; Back may have hidden the keyboard.
+        if (show && (!shown || o.optBoolean("reshow"))) {
             requestFocus()
             imm.showSoftInput(this, 0)
         } else if (!show && shown) {
@@ -96,7 +106,7 @@ class RuneInputView(private val activity: RuneActivity) : View(activity) {
 
     /** Takes Rune's text as ours and starts the keyboard over on it. */
     private fun replace(text: String, newBase: Long, a: Int, f: Int) {
-        value = text; base = newBase; anchor = a; focus = f; composing = false
+        value = text; base = newBase; anchor = a; focus = f; composing = false; preedit = ""
         BaseInputConnection.removeComposingSpans(editable)
         editable.replace(0, editable.length, text)
         Selection.setSelection(editable, a, f)

@@ -56,6 +56,13 @@ Checked on API 35, Google APIs arm64, with Gboard:
     stock `EditText` and in Settings' search as well, so this is the keyboard, not the bridge.
 - **Enter and Done:** both submit the field. The keyboard hides when the field loses focus and
   comes up when a field gains it.
+- **Coming back to the keyboard:** after Back dismisses it, a tap on Rune while the field
+  still has focus brings it back. After the app goes to the background and returns, it is up
+  again.
+- **Volume:** about 800 hardware-key characters (`adb shell input text`, which goes to the
+  native input queue rather than through the keyboard) each ended in a sync to Kotlin. No JNI
+  errors, and the text grew past the 512-unit window. jni 0.22 pushes a local frame on each
+  `attach_current_thread`, so a sync's strings don't pile up.
 - **Without the host:** `examples/android-hello` (plain NativeActivity) runs as before. The
   first `runeSync` fails there and Rune stops calling it.
 
@@ -87,6 +94,9 @@ Stills: `demo/android/keyboard-*.png`.
     the caret is. Rune's `ime_area` has the rect.
   - The Editable holds only the ±512-unit window, so a jump of the caret further than that
     restarts the keyboard.
+  - Hardware keys go through winit, not the keyboard's connection. Each one changes Rune's
+    text behind the Editable, so the host restarts the keyboard on the next sync. That's
+    correct, but it costs Gboard its state for each key.
   - Samsung's keyboard batches its edits differently from Gboard (see
     `05-text-ime-a11y-layout.md`) and is untested.
 
