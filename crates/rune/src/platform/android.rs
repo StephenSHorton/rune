@@ -13,8 +13,13 @@
 //! Android takes the native window away when the app goes to the background and gives a new
 //! one when it comes back: windows drop their surface on `suspended` and make a new one on
 //! the next `resumed` (`window::android`).
+//!
+//! Typing on the on-screen keyboard needs the Kotlin host in `crates/rune/android` (`ime`): an
+//! app that uses it names `dev.rune.RuneActivity` as its activity instead of NativeActivity.
 
 use std::sync::OnceLock;
+
+pub(crate) mod ime;
 
 pub use winit::platform::android::activity::AndroidApp;
 

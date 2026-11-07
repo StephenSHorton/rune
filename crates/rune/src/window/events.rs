@@ -378,7 +378,8 @@ impl<S: 'static> Host<S> {
                     rt.ime_reset = true;
                 } else {
                     let ime_allowed = rt.ime_area.is_some() && !rt.has_secure_focus();
-                    if std::mem::take(&mut rt.ime_reset) || ime_allowed != self.ime_allowed {
+                    // Android's keyboard follows the Kotlin host (`platform_sync`).
+                    if cfg!(not(target_os = "android")) && (std::mem::take(&mut rt.ime_reset) || ime_allowed != self.ime_allowed) {
                         l.window.set_ime_allowed(false);
                         l.window.set_ime_allowed(ime_allowed);
                         self.ime_allowed = ime_allowed;

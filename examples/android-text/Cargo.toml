@@ -1,0 +1,21 @@
+[package]
+name = "android-text"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+description = "Typing into a Rune text field with Android's on-screen keyboard (the Kotlin host in crates/rune/android): scripts/android-apk.sh android-text builds the APK."
+
+[lib]
+# The shared library RuneActivity loads (`android.app.lib_name` in the manifest); `lib` lets the
+# desktop binary below use the same view.
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "android-text"
+path = "src/main.rs"
+
+[dependencies]
+rune = { path = "../../crates/rune" }
+
+[lints]
+workspace = true

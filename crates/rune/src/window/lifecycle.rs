@@ -95,6 +95,8 @@ impl<S: 'static> Host<S> {
             updated |= self.rt.update_if(f);
             self.menus.drain();
         });
+        #[cfg(target_os = "android")]
+        let answered = answered | crate::platform::android::ime::receive(&mut self.rt);
         let changed = clipboard || answered || updated || self.rt.drag_ends_pending();
         // Only updates that changed nothing (`AppHandle::update_if`), or an empty startup drain
         // after `try_create` already drew the first frame, ran: no poll, no frame.

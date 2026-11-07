@@ -270,7 +270,7 @@ mod pixel_snap_tests;
 #[cfg(test)]
 mod size_tests;
 
-#[cfg(any(test, target_arch = "wasm32"))]
+#[cfg(any(test, target_arch = "wasm32", target_os = "android"))]
 #[path = "runtime/web/runtime.rs"]
 pub(crate) mod web_runtime;
 #[path = "runtime/web/a11y.rs"]

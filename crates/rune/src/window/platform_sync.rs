@@ -10,7 +10,10 @@ pub(super) fn sync_platform<S: 'static>(l: &mut Win, rt: &mut Runtime<S>, secure
     let focused = l.window.has_focus();
     secure_input.set(rt.has_secure_focus() && focused);
     let ime_allowed = rt.ime_area.is_some() && !rt.has_secure_focus() && focused;
-    if std::mem::take(&mut rt.ime_reset) || ime_allowed != *ime {
+    // Android's keyboard belongs to the Kotlin host's view; winit's would hide it.
+    #[cfg(target_os = "android")]
+    crate::platform::android::ime::sync(rt, focused);
+    if cfg!(not(target_os = "android")) && (std::mem::take(&mut rt.ime_reset) || ime_allowed != *ime) {
         l.window.set_ime_allowed(false);
         l.window.set_ime_allowed(ime_allowed);
         *ime = ime_allowed;

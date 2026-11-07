@@ -490,6 +490,8 @@ impl<S: 'static> Host<S> {
         rt.app_stats = app_stats;
         let mut clipboard = crate::clipboard::Client::default();
         clipboard.connect(waker.clone());
+        #[cfg(target_os = "android")]
+        crate::platform::android::ime::connect(waker.clone());
         shared.connect(waker.clone());
         let popup = crate::popup_menu::Presenter::new(waker.clone());
         let file_dialog = crate::file_dialog::Presenter::new(waker.clone());
