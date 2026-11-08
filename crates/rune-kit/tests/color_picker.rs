@@ -16,6 +16,8 @@ struct App {
     picker: ColorPickerState,
     changes: usize,
     commits: Vec<Color>,
+    defaults: usize,
+    hidden: bool,
 }
 
 fn view(s: &App, cx: &mut Cx<App>) -> El {
@@ -29,7 +31,16 @@ fn view(s: &App, cx: &mut Cx<App>) -> El {
         })
         .on_commit(|s: &mut App, c, _| s.commits.push(c))
         .build(&k);
-    col().w_full().h_full().padding(10.0).child(picker).child(ColorSwatch::new(Color::WHITE).build(&k).key("chip"))
+    let ok = rune::el()
+        .key("ok")
+        .size(20.0, 20.0)
+        .focusable(true)
+        .role("button")
+        .default_button()
+        .on_press(|s: &mut App| s.defaults += 1);
+    let root = col().w_full().h_full().padding(10.0);
+    let root = if s.hidden { root } else { root.child(picker) };
+    root.child(ColorSwatch::new(Color::WHITE).build(&k).key("chip")).child(ok)
 }
 
 fn app() -> Runtime<App> {
@@ -183,4 +194,51 @@ fn a_swatch_after_typing_commits_the_typed_hex_on_blur_then_the_swatch() {
     // As on the web, the field's blur commits what was typed before the swatch's press lands.
     let commits: Vec<String> = rt.state.commits.iter().map(|&c| hex(c)).collect();
     assert_eq!(commits, vec!["#aabbcc".to_owned(), hex(picked)]);
+}
+
+#[test]
+fn return_with_nothing_typed_presses_the_default_button() {
+    let mut rt = app();
+    press(&mut rt, "tag-hex");
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!((rt.state.commits.len(), rt.state.defaults), (0, 1), "Return reached the default button");
+    // With a typed colour waiting, Return commits it and the field keeps the key.
+    typed(&mut rt, "#123456");
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.iter().map(|&c| hex(c)).collect::<Vec<_>>(), vec!["#123456"]);
+    assert_eq!(rt.state.defaults, 1);
+    // Committed: the next Return goes to the default button again.
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!((rt.state.commits.len(), rt.state.defaults), (1, 2));
+}
+
+#[test]
+fn an_app_hiding_the_picker_takes_the_typed_colour() {
+    let mut rt = app();
+    press(&mut rt, "tag-hex");
+    typed(&mut rt, "#abc");
+    rt.update(|s: &mut App, _| {
+        s.hidden = true;
+        if let Some(c) = s.picker.take_pending() {
+            s.commits.push(c);
+        }
+    });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.iter().map(|&c| hex(c)).collect::<Vec<_>>(), vec!["#aabbcc"]);
+    // Shown again and blurred later: taken, so not committed twice.
+    rt.update(|s: &mut App, _| s.hidden = false);
+    rt.frame(0.0);
+    rt.pointer_down(390.0, 390.0);
+    rt.frame(0.0);
+    rt.pointer_up(390.0, 390.0);
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.len(), 1);
 }

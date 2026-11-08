@@ -35,6 +35,12 @@ impl ColorPickerState {
     pub fn new(c: Color) -> ColorPickerState {
         ColorPickerState { hex: TextEdit::new(hex6(c)), toned: Some(c), pending: None }
     }
+    /// The colour typed into the field and reported to `on_change` but not yet to
+    /// `on_commit`, cleared: for an app that hides the picker without a press while the field
+    /// has focus, which leaves no blur to commit it. Once taken it is not committed later.
+    pub fn take_pending(&mut self) -> Option<Color> {
+        self.pending.take()
+    }
     /// Show `c` in the field, as a pick from outside the picker would.
     pub fn set(&mut self, c: Color) {
         self.hex.replace_text(hex6(c));
@@ -125,7 +131,12 @@ impl<S: 'static> ColorPicker<S> {
     }
     /// The colour settles: a swatch pick, a hue drag released (not cancelled) or a hue key
     /// step, and a typed hex on Return or when the field loses focus (the last one that
-    /// parsed). For saving once rather than on every step.
+    /// parsed). For saving once rather than on every step. Return in the field commits only
+    /// while a typed colour waits; otherwise it presses a dialog's default button as usual.
+    ///
+    /// The blur commit needs the picker mounted. An app that hides the picker without a press
+    /// (from its state or a shortcut) while a typed colour waits takes it with
+    /// [`ColorPickerState::take_pending`] and commits it there.
     pub fn on_commit(mut self, f: impl Fn(&mut S, Color, &mut Tx) + 'static) -> Self {
         self.commit = Some(Rc::new(f));
         self
@@ -181,8 +192,10 @@ impl<S: 'static> ColorPicker<S> {
                     }
                 }
             });
-        // Only with a commit to make: otherwise Return still presses a dialog's default button.
-        if self.commit.is_some() {
+        // Only while a typed colour waits (each keystroke that parses rebuilds the view): a
+        // field with on_submit takes Return, and otherwise Return presses a dialog's default
+        // button.
+        if self.commit.is_some() && self.state.pending.is_some() {
             field = field.on_submit(commit_typed(self.access.clone(), self.commit.clone()));
         }
         let field = field.build(k).key(format!("{}-hex", self.key));
