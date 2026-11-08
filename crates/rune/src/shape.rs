@@ -11,6 +11,9 @@
 
 use crate::color::Color;
 
+pub(crate) mod dash;
+pub(crate) use dash::Dash;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum LineCap {
     /// Segments end at their points.
@@ -28,6 +31,8 @@ pub(crate) enum Op {
         width: f32,
         cap: LineCap,
         color: Color,
+        /// `Shape::dashed`: drawn as dashes instead of solid.
+        dash: Option<Dash>,
     },
     Fill {
         points: Vec<[f32; 2]>,
@@ -80,6 +85,7 @@ impl Shape {
                 width,
                 cap,
                 color,
+                dash: None,
             });
         }
         self
@@ -88,6 +94,52 @@ impl Shape {
     /// A straight line from `a` to `b`.
     pub fn line(self, a: [f32; 2], b: [f32; 2], width: f32, cap: LineCap, color: Color) -> Shape {
         self.stroke_with(vec![a, b], false, width, cap, color)
+    }
+
+    /// Draws every stroke added so far as dashes `dash` points long with `gap` points between,
+    /// as SVG's `stroke-dasharray: dash gap`, starting with a dash at each stroke's start. A dash
+    /// that turns a corner bends with the line; caps are the stroke's own, so round caps with a
+    /// `dash` of 0 draw dots. Lengths stay in points under [`Self::view_box`], like widths. A
+    /// `gap` of 0 or less, or a negative `dash`, leaves the strokes solid. Strokes added after
+    /// it stay solid, so one shape can hold both.
+    ///
+    /// [`El::dash_flow`](crate::El::dash_flow) slides the dashes along continuously (a node
+    /// graph's animated edge); [`Self::dash_offset`] places them.
+    ///
+    /// ```
+    /// use rune::{Color, Shape, canvas};
+    /// let edge = Shape::new().stroke(vec![[0.0, 10.0], [120.0, 10.0]], 1.5, Color::WHITE).dashed(5.0, 5.0);
+    /// let _el = canvas(edge).size(120.0, 20.0).dash_flow(20.0);
+    /// ```
+    pub fn dashed(mut self, dash: f32, gap: f32) -> Shape {
+        let pattern = Dash::new(dash, gap);
+        for op in &mut self.ops {
+            if let Op::Stroke { dash, .. } = op {
+                *dash = pattern;
+            }
+        }
+        self
+    }
+
+    /// Slides the dashes of every dashed stroke `offset` points forward along it (toward its
+    /// end; negative goes back), wrapping each pattern length: SVG's `stroke-dashoffset` with
+    /// the sign turned, so a growing offset moves the dashes the way the line runs.
+    pub fn dash_offset(mut self, offset: f32) -> Shape {
+        for op in &mut self.ops {
+            if let Op::Stroke { dash: Some(d), .. } = op {
+                d.offset = if offset.is_finite() { offset } else { 0.0 };
+            }
+        }
+        self
+    }
+
+    /// One dash and gap of the first dashed stroke, in points: how far
+    /// [`El::dash_flow`](crate::El::dash_flow) slides it each cycle.
+    pub(crate) fn dash_period(&self) -> Option<f32> {
+        self.ops.iter().find_map(|op| match op {
+            Op::Stroke { dash: Some(d), .. } => Some(d.period()),
+            _ => None,
+        })
     }
 
     /// The inside of the simple polygon through `points` (either winding; not self-intersecting).
@@ -168,7 +220,7 @@ impl Shape {
         let mut ops = Vec::new();
         for op in &self.ops {
             match op {
-                Op::Stroke { points, closed, width, cap, color } => {
+                Op::Stroke { points, closed, width, cap, color, dash } => {
                     let l = len(points, *closed);
                     let (lo, hi) = (from.max(done), at.min(done + l));
                     if lo <= done && hi >= done + l {
@@ -180,7 +232,9 @@ impl Shape {
                         }
                         let cut = slice(&ring, lo - done, hi - done);
                         if cut.len() >= 2 {
-                            ops.push(Op::Stroke { points: cut, closed: false, width: *width, cap: *cap, color: *color });
+                            // The pattern stays where it was on the whole stroke.
+                            let dash = dash.map(|d| Dash { offset: d.offset - (lo - done), ..d });
+                            ops.push(Op::Stroke { points: cut, closed: false, width: *width, cap: *cap, color: *color, dash });
                         }
                     }
                     done += l;

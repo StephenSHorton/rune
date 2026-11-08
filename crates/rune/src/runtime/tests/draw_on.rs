@@ -64,3 +64,50 @@ fn a_live_trim_cuts_a_shape_every_frame_without_rebuilding() {
     rt.frame(0.0);
     assert_eq!(count(&rt), 3, "a fixed span keeps its stretch, cut mid-segment at both ends");
 }
+
+/// The first dash's start along a dashed line, in device px.
+fn first_dash(rt: &Runtime<()>) -> f32 {
+    rt.instances.iter().filter(|q| q.params[1] == KIND_SEGMENT).map(|q| q.radii[0]).fold(f32::INFINITY, f32::min)
+}
+
+fn dashed_edge(_: &(), _: &mut Cx<()>) -> El {
+    let edge = Shape::new().stroke(vec![[0.0, 20.0], [100.0, 20.0]], 2.0, crate::Color::WHITE).dashed(6.0, 4.0);
+    col().size(200.0, 100.0).child(canvas(edge).key("edge").size(100.0, 40.0).dash_flow(20.0))
+}
+
+#[test]
+fn a_dashed_stroke_draws_one_segment_per_dash() {
+    fn view(_: &(), _: &mut Cx<()>) -> El {
+        let edge = Shape::new().stroke(vec![[0.0, 20.0], [100.0, 20.0]], 2.0, crate::Color::WHITE).dashed(6.0, 4.0).dash_offset(2.0);
+        col().size(200.0, 100.0).child(canvas(edge).size(100.0, 40.0))
+    }
+    let mut rt = Runtime::new((), view, (200.0, 100.0), Env::new(true, 1.0));
+    rt.frame(0.0);
+    let count = rt.instances.iter().filter(|q| q.params[1] == KIND_SEGMENT).count();
+    // 100 points of 6 on and 4 off, slid 2 on: dashes start at 2, 12, ... 92.
+    assert_eq!(count, 10);
+    assert!(!rt.frame(1.0 / 60.0), "a still pattern asks for no frames");
+}
+
+#[test]
+fn dash_flow_marches_the_dashes_without_rebuilding_and_stands_still_reduced() {
+    let mut rt = Runtime::new((), dashed_edge, (200.0, 100.0), Env::new(true, 1.0));
+    rt.frame(0.0);
+    let commits = rt.stats.commits;
+    let start = first_dash(&rt);
+    assert!(rt.frame(0.1), "keeps drawing while it flows");
+    // 20 points a second: 2 points on after 0.1 s, so a gap's sliver shows before the first dash.
+    let moved = first_dash(&rt);
+    assert!((moved - start - 2.0).abs() < 0.1, "{start} -> {moved}");
+    for _ in 0..30 {
+        assert!(rt.frame(1.0 / 60.0));
+    }
+    assert_eq!(rt.stats.commits, commits, "no view rebuild");
+
+    let mut rt = Runtime::new((), dashed_edge, (200.0, 100.0), Env::new(true, 1.0));
+    rt.set_system_reduced_motion(true);
+    rt.frame(0.0);
+    let still = first_dash(&rt);
+    rt.frame(0.25);
+    assert_eq!(first_dash(&rt), still, "Reduce Motion holds the dashes still");
+}

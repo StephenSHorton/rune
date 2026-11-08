@@ -14,6 +14,9 @@ pub enum LoopKind {
     Slide { from: [f32; 2], to: [f32; 2] },
     /// A `Slide` swept along `easing` instead of ease-in-out ([`LoopSpec::easing`]).
     SlideEased { from: [f32; 2], to: [f32; 2], easing: Easing },
+    /// A steady march from 0 to `length` each period that wraps, sampled in the same units
+    /// (marching dashes: one dash and gap in points). Reduced motion holds 0.
+    March { length: f32 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -35,6 +38,11 @@ impl LoopSpec {
     }
     pub const fn rotation(period: f64) -> Self {
         Self { period, delay: 0.0, kind: LoopKind::Rotation }
+    }
+    /// A constant-speed march over `length` every `period` seconds that wraps; a negative
+    /// `length` marches the other way.
+    pub const fn march(period: f64, length: f32) -> Self {
+        Self { period, delay: 0.0, kind: LoopKind::March { length } }
     }
     /// Reduced motion holds the sweep's midpoint; removal cools it back to no offset.
     pub const fn slide(period: f64, from: [f32; 2], to: [f32; 2]) -> Self {
@@ -135,6 +143,7 @@ impl LoopTrack {
             LoopKind::Sequence(_) => self.pose(now, reduced).unwrap().opacity,
             LoopKind::OpacityCycle(c) => if reduced { c.still } else { c.sample(wall) },
             LoopKind::Rotation => phase * core::f32::consts::TAU,
+            LoopKind::March { length } => phase * length,
             LoopKind::Slide { .. } | LoopKind::SlideEased { .. } => 1.0,
             LoopKind::Opacity { low, high } => {
                 let triangle = if phase < 0.5 { phase * 2.0 } else { (1.0 - phase) * 2.0 };
@@ -258,6 +267,18 @@ mod tests {
             .windows(2).map(|w| w[1] - w[0]).collect();
         assert!(steps[60] > steps[0] * 4.0, "ease-in-out starts slow");
         assert_eq!(LoopSpec::rotation(1.0).easing(Easing::LINEAR), LoopSpec::rotation(1.0), "only slides take a curve");
+    }
+    #[test]
+    fn a_march_moves_at_a_constant_speed_wraps_and_holds_still_reduced() {
+        let t = LoopTrack::new(LoopSpec::march(0.5, 10.0), 0.0);
+        assert_eq!(t.sample(0.0, false), 0.0);
+        assert!((t.sample(0.125, false) - 2.5).abs() < 1e-5);
+        assert!((t.sample(0.375, false) - 7.5).abs() < 1e-5);
+        assert!(t.sample(0.5, false).abs() < 1e-5, "wraps after a period");
+        assert_eq!(t.sample(0.3, true), 0.0, "reduced motion holds still");
+        let back = LoopTrack::new(LoopSpec::march(0.5, -10.0), 0.0);
+        assert!((back.sample(0.125, false) + 2.5).abs() < 1e-5);
+        assert_eq!(t.offset(0.2, false), None, "a march moves no node");
     }
     #[test]
     fn cooling_keeps_phase_and_settles() {
