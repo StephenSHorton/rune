@@ -351,6 +351,7 @@ pub(crate) fn run(windows: Vec<AnyWindowSpec>, selected: usize, args: Args, acce
                 Pos::Key(key) => desk.find(key).unwrap_or_else(|| die(&format!("script: no element with key {key:?} in a visible window"))),
                 Pos::Rel(_, _) if e.kind.at_pointer() => desk.pointer().unwrap_or((0.0, 0.0)),
                 Pos::Rel(dx, dy) => (last_down.0 + dx, last_down.1 + dy),
+                Pos::Pointer => desk.pointer().unwrap_or(last_down),
             };
             let (x, y) = at();
             match &e.kind {

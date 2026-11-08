@@ -182,8 +182,11 @@ pub enum ScriptPoint {
     At(f32, f32),
     /// The centre of the element with this key (or path suffix), found when the event runs.
     Element(String),
-    /// An offset from the last pointer-down position (drags, the release of a tap).
+    /// An offset from the last pointer-down position (a drag's moves and release).
     FromDown(f32, f32),
+    /// Wherever the pointer is when the event runs (the release of a tap or click, or an `up`
+    /// with no position).
+    Pointer,
 }
 
 static RUN: AtomicPtr<HeadlessRun> = AtomicPtr::new(std::ptr::null_mut());

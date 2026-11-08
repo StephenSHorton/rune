@@ -300,6 +300,9 @@ pub(crate) enum Pos {
     Key(String),
     /// Relative to the last pointer-down position.
     Rel(f32, f32),
+    /// Wherever the pointer is when the event runs: a release lands where the hand is, so a
+    /// move during a tap's hold isn't undone by its up.
+    Pointer,
 }
 
 #[derive(Clone, Debug)]
@@ -416,6 +419,7 @@ impl Ev {
             Pos::Xy(x, y) => ScriptPoint::At(*x, *y),
             Pos::Key(key) => ScriptPoint::Element(key.clone()),
             Pos::Rel(dx, dy) => ScriptPoint::FromDown(*dx, *dy),
+            Pos::Pointer => ScriptPoint::Pointer,
         };
         let pointer = |action| ScriptEvent::Pointer { action, at: at() };
         let event = match &self.kind {
@@ -511,6 +515,9 @@ mod window_tests;
 #[cfg(test)]
 #[path = "tooling/tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "tooling/script_release_tests.rs"]
+mod script_release_tests;
 #[cfg(test)]
 #[path = "tooling/tree_caret_tests.rs"]
 mod tree_caret_tests;

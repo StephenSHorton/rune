@@ -167,7 +167,7 @@ fn marks_are_inert_events_that_times_can_name() {
 }
 
 /// Headless runs publish the process's `headless_run`, so tests that render one take turns.
-static HEADLESS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(super) static HEADLESS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
 fn mark_names_win_over_offsets_and_offsets_must_be_complete() {
@@ -400,7 +400,7 @@ fn apps_read_the_headless_run_from_init() {
         ScriptEvent::Pointer { action, at } => format!("{} {action:?} {at:?}", e.t),
         other => panic!("unexpected {other:?}"),
     }).collect();
-    assert_eq!(summary, ["0.25 key h", "0.35 key i", "0.5 Move At(4.0, 5.0)", "0.5 Down At(4.0, 5.0)", "0.58 Up FromDown(0.0, 0.0)"]);
+    assert_eq!(summary, ["0.25 key h", "0.35 key i", "0.5 Move At(4.0, 5.0)", "0.5 Down At(4.0, 5.0)", "0.58 Up Pointer"]);
     assert_eq!((run.script_end(), run.frames(), run.start()), (0.58, 0, 0.0));
     // A tree is taken one second after the script, at the nearest frame.
     assert!((run.end() - 47.0 / 30.0).abs() < 1e-9, "{}", run.end());

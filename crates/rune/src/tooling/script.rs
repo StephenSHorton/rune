@@ -94,17 +94,18 @@ pub(crate) fn parse_script(list: Value) -> Vec<Ev> {
                 out.push(Ev { t, kind: Kind::Move, pos: pos.clone() });
                 out.push(Ev { t, kind: down, pos });
             }
-            "up" => out.push(Ev { t, kind: up, pos }),
+            // An up with no position of its own lands where the pointer is, as a hand's does.
+            "up" => out.push(Ev { t, kind: up, pos: at_pointer(pos) }),
             "secondary-down" => out.push(Ev { t, kind: Kind::SecondaryDown, pos }),
-            "secondary-up" => out.push(Ev { t, kind: Kind::SecondaryUp, pos }),
+            "secondary-up" => out.push(Ev { t, kind: Kind::SecondaryUp, pos: at_pointer(pos) }),
             "secondary-click" => {
                 out.push(Ev { t, kind: Kind::SecondaryDown, pos: pos.clone() });
-                out.push(Ev { t: t + e["hold"].as_f64().unwrap_or(0.08), kind: Kind::SecondaryUp, pos });
+                out.push(Ev { t: t + e["hold"].as_f64().unwrap_or(0.08), kind: Kind::SecondaryUp, pos: Pos::Pointer });
             }
             "tap" | "click" => {
                 out.push(Ev { t, kind: Kind::Move, pos: pos.clone() });
                 out.push(Ev { t, kind: down, pos });
-                out.push(Ev { t: t + e["hold"].as_f64().unwrap_or(0.08), kind: up, pos: Pos::Rel(0.0, 0.0) });
+                out.push(Ev { t: t + e["hold"].as_f64().unwrap_or(0.08), kind: up, pos: Pos::Pointer });
             }
             "double-click" | "double-tap" | "triple-click" => {
                 // Two (three) presses `gap` apart (default 0.15 s), inside the default double-click interval.
@@ -114,7 +115,7 @@ pub(crate) fn parse_script(list: Value) -> Vec<Ev> {
                 for start in (0..presses).map(|k| t + gap * k as f64) {
                     out.push(Ev { t: start, kind: Kind::Move, pos: pos.clone() });
                     out.push(Ev { t: start, kind: Kind::Down, pos: pos.clone() });
-                    out.push(Ev { t: start + hold, kind: Kind::Up, pos: Pos::Rel(0.0, 0.0) });
+                    out.push(Ev { t: start + hold, kind: Kind::Up, pos: Pos::Pointer });
                 }
             }
             "drag" => {
@@ -256,4 +257,9 @@ pub(crate) fn parse_files(e: &Value, t: f64, out: &mut Vec<Ev>) -> bool {
         out.push(Ev { t: t + hover, kind: Kind::Files(FileStep::Drop(paths)), pos });
     }
     true
+}
+
+/// An up's position: one it names, or else wherever the pointer is when it runs.
+fn at_pointer(pos: Pos) -> Pos {
+    if matches!(pos, Pos::Rel(..)) { Pos::Pointer } else { pos }
 }
