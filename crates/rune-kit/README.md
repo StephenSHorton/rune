@@ -87,7 +87,10 @@ state; `.current(..).on_choose(..)` binds selection. It filters case-insensitive
 ArrowUp/Down and Ctrl-N/P across enabled rows, scrolls keyboard choices into view, and ignores
 selection keys during IME composition. Escape closes it. A keystroke's rows and the popover's
 height land in its frame; `.animate_filtering(true)` crossfades the rows and springs the
-height instead. `PopupList`, the list it shares with `@`-mention and `/`-command popovers,
+height instead. `PopupList::at_caret("composer")` (and `Popover::at_caret`) hangs the list from
+the focused field's caret instead of the field's edge, following it as the person types, and
+`.header("At most 10 mentions")` puts a muted heading line above the rows that is never an
+option. `PopupList`, the list it shares with `@`-mention and `/`-command popovers,
 takes the same switch, so rows an app's commit changes land at once even when the field it
 follows animates its layout. The contract follows OpenCode's
 `components/list` and `use-filtered-list`; Rune's fuzzy ranking

@@ -508,3 +508,6 @@ mod window_tests;
 #[cfg(test)]
 #[path = "tooling/tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "tooling/tree_caret_tests.rs"]
+mod tree_caret_tests;

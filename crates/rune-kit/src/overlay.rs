@@ -154,6 +154,7 @@ pub struct Popover {
     padding: f32,
     close: Acts,
     dismiss: Option<El>,
+    caret: Option<String>,
 }
 
 impl Popover {
@@ -171,10 +172,19 @@ impl Popover {
             padding: 12.0,
             close: Acts::default(),
             dismiss: None,
+            caret: None,
         }
     }
     pub fn trigger(mut self, t: El) -> Self {
         self.trigger = Some(t);
+        self
+    }
+    /// Open beside the caret of the focused text field keyed `field` (or inside an element
+    /// keyed `field`) instead of the trigger, on [`Self::placement`]'s side, following the caret
+    /// as the person types. While the field has no focus it sits beside the field's box. See
+    /// [`rune::El::anchored_to_caret`].
+    pub fn at_caret(mut self, field: impl Into<String>) -> Self {
+        self.caret = Some(field.into());
         self
     }
     /// The body's inset on every side, 12 by default; 0 lets a body draw edge to edge, such as a
@@ -262,7 +272,11 @@ impl Popover {
             layer.push(s);
         }
         let (side, align) = self.placement.split();
-        layer.push(anchor_at(k, raised(k, content, k.radius.md), &anchor_key, side, align, self.gutter));
+        let surface = match &self.caret {
+            Some(field) => anchor_at(k, raised(k, content, k.radius.md), field, side, align, self.gutter).anchored_at_caret(),
+            None => anchor_at(k, raised(k, content, k.radius.md), &anchor_key, side, align, self.gutter),
+        };
+        layer.push(surface);
         trigger
     }
 }

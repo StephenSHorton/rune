@@ -1252,6 +1252,15 @@ compares the current text and, on macOS/Windows, the clipboard revision; copying
 something else cancels the old expiry. Linux's portable API exposes no revision,
 so it compares text. Clipboard managers must honor the platform marker themselves.
 
+`cx.caret("composer")` reads the focused field's caret line `[x, y, w, h]` in window points
+(the field keyed `composer`, or one inside it), and `--tree` lists it as `caret` on the field.
+To hang a popup from it, as an `@`-mention picker hangs under the word being typed, anchor the
+popup with `.anchored_to_caret("composer", Side::Bottom, Align::Start, 4.0)` (or
+`.anchored_fit(..).anchored_at_caret()`): it flips and stays inside the window as
+`El::anchored` does, follows typing, scrolling and IME composition in the frame the caret
+moves, and sits beside the field's box while it has no focus. Kit's `PopupList::at_caret` and
+`Popover::at_caret` use it.
+
 Put `.on_paste(|s: &mut State, text: &str, tx| { ... })` on the view root (or modal
 root) to handle Cmd/Ctrl-V when no field is focused. `tx.request_paste()` requests
 the same asynchronous clipboard read from a button, including in overlays.

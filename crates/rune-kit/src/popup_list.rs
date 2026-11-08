@@ -102,6 +102,8 @@ pub struct PopupList<S> {
     active: Option<usize>,
     empty: String,
     label: Option<String>,
+    header: Option<String>,
+    caret: bool,
     on_active: Option<ActiveFn<S>>,
     on_choose: Option<ChooseFn<S>>,
     on_close: Option<CloseFn<S>>,
@@ -125,6 +127,8 @@ impl<S: 'static> PopupList<S> {
             active: None,
             empty: "No results".into(),
             label: None,
+            header: None,
+            caret: false,
             on_active: None,
             on_choose: None,
             on_close: None,
@@ -141,6 +145,26 @@ impl<S: 'static> PopupList<S> {
         self.align = align;
         self.gutter = gap;
         self
+    }
+    /// Hang the list from the caret of the focused text field keyed `field` (or inside an
+    /// element keyed `field`), on the side and alignment set so far (above the caret, at its
+    /// start, by default), as an `@`-mention picker follows the word being typed. It follows
+    /// the caret as the person types and flips when it doesn't fit; while the field has no
+    /// focus it sits beside the field's box. See [`rune::El::anchored_to_caret`].
+    ///
+    /// ```ignore
+    /// PopupList::new("mentions", "composer").at_caret("composer").placement(Placement::BottomStart)
+    /// ```
+    pub fn at_caret(mut self, field: impl Into<String>) -> Self {
+        self.anchor = field.into();
+        self.caret = true;
+        self
+    }
+    /// [`Self::at_caret`] with explicit side, alignment and offset, as [`Self::anchored`].
+    pub fn anchored_to_caret(self, field: impl Into<String>, side: Side, align: Align, gap: f32) -> Self {
+        let mut list = self.anchored(field, side, align, gap);
+        list.caret = true;
+        list
     }
     pub fn placement(mut self, placement: Placement) -> Self {
         let (side, align) = placement.split();
@@ -215,6 +239,14 @@ impl<S: 'static> PopupList<S> {
     }
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+    /// A heading line above the rows ("People", "At most 10 mentions"): muted, not an option,
+    /// so it is never active, chosen or counted in the rows' positions. It stays while the
+    /// list is empty, above the empty message.
+    pub fn header(mut self, text: impl Into<String>) -> Self {
+        let text = text.into();
+        self.header = (!text.is_empty()).then_some(text);
         self
     }
     pub fn on_active(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
@@ -299,12 +331,22 @@ impl<S: 'static> PopupList<S> {
         if let Some(label) = self.label.as_deref() {
             viewport = viewport.label(label);
         }
+        let header = self.header.map(|h| {
+            row()
+                .key("header")
+                .w_full()
+                .h(28.0)
+                .px(8.0)
+                .center_y()
+                .child(text(h).font(k.ty.ui_compact).color(k.c.text_weak).grow(1.0).shrink().truncate())
+        });
         col()
             .key("list")
             .preserve_focus_on_press(true)
             .w_full()
             .shrink()
             .min_h(0.0)
+            .children(header)
             .child(crate::scroll_bar(k, &format!("{}-scroll-area", self.key), "viewport", viewport).w_full().shrink().min_h(0.0))
             .child(
                 el().key("empty")
@@ -333,6 +375,7 @@ impl<S: 'static> PopupList<S> {
         let width = self.width;
         let padding = self.padding;
         let instant = !self.animate_filtering;
+        let caret = self.caret;
         let list = self.build_list(k);
         let mut content = col()
             .key(key)
@@ -344,6 +387,7 @@ impl<S: 'static> PopupList<S> {
         if instant {
             content = content.instant_changes();
         }
-        layer.push(anchor_at(k, raised(k, content, k.radius.md), &anchor, side, align, gutter));
+        let surface = anchor_at(k, raised(k, content, k.radius.md), &anchor, side, align, gutter);
+        layer.push(if caret { surface.anchored_at_caret() } else { surface });
     }
 }
