@@ -169,7 +169,8 @@ impl ImageCache {
         Self { entries: Mutex::new(HashMap::new()), jobs }
     }
 
-    /// PNG, JPEG, modern ICNS containing a PNG representation, or SVG (plain or gzipped SVGZ,
+    /// PNG, JPEG, WebP (lossy or lossless, the first frame of an animated one), GIF (its first
+    /// frame), modern ICNS containing a PNG representation, or SVG (plain or gzipped SVGZ,
     /// recognised by its content). An SVG rasterizes at twice its own size; use
     /// [`ImageCache::svg`] to rasterize it at the size it draws at. Legacy ICNS codecs return an
     /// explicit error; callers can provide platform-decoded RGBA instead.
@@ -774,6 +775,27 @@ mod tests {
         }
         assert!(mip_chain(0, 1, &[]).is_err());
         assert!(mip_chain(1, 1, &[0]).is_err());
+    }
+
+    #[test]
+    fn webp_and_the_first_frame_of_a_gif_decode() {
+        let source = image::RgbaImage::from_fn(6, 3, |x, _| image::Rgba([x as u8 * 40, 90, 200, 255]));
+        let mut webp = std::io::Cursor::new(Vec::new());
+        source.write_to(&mut webp, image::ImageFormat::WebP).unwrap();
+        let d = decode(&webp.into_inner()).unwrap();
+        assert_eq!((d.mips[0].width, d.mips[0].height), (6, 3));
+
+        // Two frames, red then blue: only the first shows.
+        let frame = |c: [u8; 4]| image::Frame::new(image::RgbaImage::from_pixel(4, 2, image::Rgba(c)));
+        let mut gif = Vec::new();
+        {
+            let mut encoder = image::codecs::gif::GifEncoder::new(&mut gif);
+            encoder.encode_frames([frame([255, 0, 0, 255]), frame([0, 0, 255, 255])]).unwrap();
+        }
+        let d = decode(&gif).unwrap();
+        assert_eq!((d.mips[0].width, d.mips[0].height), (4, 2));
+        let first = &d.mips[0].pixels[..4];
+        assert!(first[0] > 200 && first[2] < 50, "the first frame, red: {first:?}");
     }
 
     #[test]
