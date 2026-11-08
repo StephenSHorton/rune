@@ -25,17 +25,21 @@ pub struct ColorPickerState {
     /// The colour the hue slider turns, as picked from a swatch or typed: turning keeps its
     /// lightness and chroma even where a hue clips them.
     toned: Option<Color>,
+    /// A colour typed into the field and reported to `on_change` but not yet to `on_commit`:
+    /// Return or the field losing focus commits it.
+    pending: Option<Color>,
 }
 
 impl ColorPickerState {
     /// A field showing `c`.
     pub fn new(c: Color) -> ColorPickerState {
-        ColorPickerState { hex: TextEdit::new(hex6(c)), toned: Some(c) }
+        ColorPickerState { hex: TextEdit::new(hex6(c)), toned: Some(c), pending: None }
     }
     /// Show `c` in the field, as a pick from outside the picker would.
     pub fn set(&mut self, c: Color) {
         self.hex.replace_text(hex6(c));
         self.toned = Some(c);
+        self.pending = None;
     }
 }
 
@@ -53,8 +57,9 @@ pub(crate) fn default_presets() -> Vec<Color> {
 ///
 /// A grid of preset swatches (the chosen one ringed), a hex field (`#rgb` or `#rrggbb`, with
 /// or without the `#`) that reports a colour once what is typed parses, and with
-/// [`Self::hue`] a slider that turns the colour's hue at its lightness and chroma. A swatch
-/// or hue change writes the new hex into the field.
+/// [`Self::hue`] a slider that turns the colour's hue at its lightness and chroma, its track
+/// painted with the hues it turns through. A swatch or hue change writes the new hex into the
+/// field. [`Self::on_change`] hears every step; [`Self::on_commit`] only settled picks.
 pub struct ColorPicker<S> {
     key: String,
     state: ColorPickerState,
@@ -65,6 +70,7 @@ pub struct ColorPicker<S> {
     swatch: f32,
     hue: bool,
     change: Option<Change<S>>,
+    commit: Option<Change<S>>,
 }
 
 impl<S: 'static> ColorPicker<S> {
@@ -83,6 +89,7 @@ impl<S: 'static> ColorPicker<S> {
             swatch: 24.0,
             hue: false,
             change: None,
+            commit: None,
         }
     }
     /// The current colour (ringed when it is a preset).
@@ -110,8 +117,17 @@ impl<S: 'static> ColorPicker<S> {
         self.hue = on;
         self
     }
+    /// The colour moves: a swatch pick, every hue drag step or key, and every keystroke that
+    /// leaves a hex that parses.
     pub fn on_change(mut self, f: impl Fn(&mut S, Color, &mut Tx) + 'static) -> Self {
         self.change = Some(Rc::new(f));
+        self
+    }
+    /// The colour settles: a swatch pick, a hue drag released (not cancelled) or a hue key
+    /// step, and a typed hex on Return or when the field loses focus (the last one that
+    /// parsed). For saving once rather than on every step.
+    pub fn on_commit(mut self, f: impl Fn(&mut S, Color, &mut Tx) + 'static) -> Self {
+        self.commit = Some(Rc::new(f));
         self
     }
 
@@ -121,10 +137,10 @@ impl<S: 'static> ColorPicker<S> {
         let width = n as f32 * self.swatch + (n - 1) as f32 * gap;
         let current = self.value.map(hex6);
         let pick = |c: Color| {
-            let (access, change) = (self.access.clone(), self.change.clone());
+            let (access, change, commit) = (self.access.clone(), self.change.clone(), self.commit.clone());
             move |s: &mut S, tx: &mut Tx| {
                 access(s).set(c);
-                if let Some(f) = &change {
+                for f in [&change, &commit].into_iter().flatten() {
                     f(s, c, tx);
                 }
             }
@@ -146,24 +162,30 @@ impl<S: 'static> ColorPicker<S> {
         let typed = self.state.hex.text.trim().to_owned();
         let invalid = !typed.is_empty() && parse_hex(&typed).is_none();
         let (access, change) = (self.access.clone(), self.change.clone());
-        let field = TextInput::new(&self.state.hex)
+        let mut field = TextInput::new(&self.state.hex)
             .width(Some(width - self.swatch - 8.0))
             .placeholder(current.clone().unwrap_or_else(|| "#000000".into()))
             .label("Hex colour")
             .invalid(invalid)
             .on_edit(move |s: &mut S| &mut access(s).hex)
             .on_change({
-                let access = self.access.clone();
+                let (access, track) = (self.access.clone(), self.commit.is_some());
                 move |s: &mut S, tx: &mut Tx| {
                     let Some(c) = parse_hex(&access(s).hex.text) else { return };
                     access(s).toned = Some(c);
+                    if track {
+                        access(s).pending = Some(c);
+                    }
                     if let Some(f) = &change {
                         f(s, c, tx);
                     }
                 }
-            })
-            .build(k)
-            .key(format!("{}-hex", self.key));
+            });
+        // Only with a commit to make: otherwise Return still presses a dialog's default button.
+        if self.commit.is_some() {
+            field = field.on_submit(commit_typed(self.access.clone(), self.commit.clone()));
+        }
+        let field = field.build(k).key(format!("{}-hex", self.key));
         let preview =
             ColorSwatch::new(self.value.unwrap_or(Color::TRANSPARENT)).size(self.swatch).build(k).key("preview");
         let mut e = col()
@@ -172,33 +194,63 @@ impl<S: 'static> ColorPicker<S> {
             .w(width)
             .child(grid)
             .child(row().gap(8.0).center_y().child(preview).child(field));
+        // The field lost focus with a typed colour not yet committed: this probe, mounted for
+        // that build only, commits it on its first layout and goes again.
+        if self.commit.is_some() && self.state.pending.is_some() && !self.state.hex.focused {
+            let typed = commit_typed(self.access.clone(), self.commit.clone());
+            e = e.child(
+                rune::el()
+                    .key(format!("{}-blur-commit", self.key))
+                    .absolute(0.0, 0.0)
+                    .size(0.0, 0.0)
+                    .a11y_hidden()
+                    .on_layout_tx(move |s: &mut S, _, tx: &mut Tx| typed(s, tx)),
+            );
+        }
         if self.hue {
             let base = self.state.toned.or(self.value).unwrap_or(k.c.bg_accent);
             let set_hue = pick_hue(self.access.clone(), self.change.clone(), base);
             let shown = self.value.and_then(hue_of).or_else(|| hue_of(base)).unwrap_or(0.0);
-            e = e.child(
-                Slider::new(shown)
-                    .range(0.0, 360.0)
-                    .step(1.0)
-                    .width(width)
-                    .label("Hue")
-                    .value_text(|h| format!("{h:.0}°"))
-                    .on_change(set_hue)
-                    .build(k)
-                    .key(format!("{}-hue", self.key)),
-            );
+            // Seven 60° steps from red around to red, at the colour's lightness and chroma.
+            let stops: Vec<(f32, Color)> =
+                (0..7).map(|i| (i as f32 / 6.0, with_hue(base, i as f32 * 60.0))).collect();
+            let mut slider = Slider::new(shown)
+                .range(0.0, 360.0)
+                .step(1.0)
+                .width(width)
+                .label("Hue")
+                .value_text(|h| format!("{h:.0}°"))
+                .track_gradient(&stops)
+                .on_change(set_hue);
+            if self.commit.is_some() {
+                slider = slider.on_commit(pick_hue(self.access.clone(), self.commit.clone(), base));
+            }
+            e = e.child(slider.build(k).key(format!("{}-hue", self.key)));
         }
         e
     }
 }
 
-fn pick_hue<S: 'static>(access: Access<S>, change: Option<Change<S>>, base: Color) -> impl Fn(&mut S, f32, &mut Tx) {
+/// Commits the colour typed into the field, if one is waiting.
+fn commit_typed<S: 'static>(access: Access<S>, commit: Option<Change<S>>) -> impl Fn(&mut S, &mut Tx) {
+    move |s: &mut S, tx: &mut Tx| {
+        let Some(c) = access(s).pending.take() else { return };
+        if let Some(f) = &commit {
+            f(s, c, tx);
+        }
+    }
+}
+
+/// Reports hue `h` on `base` to `report` (the change or the commit), writing its hex into the
+/// field.
+fn pick_hue<S: 'static>(access: Access<S>, report: Option<Change<S>>, base: Color) -> impl Fn(&mut S, f32, &mut Tx) {
     move |s: &mut S, h: f32, tx: &mut Tx| {
         let c = with_hue(base, h);
         let st = access(s);
         st.hex.replace_text(hex6(c));
         st.toned.get_or_insert(base);
-        if let Some(f) = &change {
+        st.pending = None;
+        if let Some(f) = &report {
             f(s, c, tx);
         }
     }
