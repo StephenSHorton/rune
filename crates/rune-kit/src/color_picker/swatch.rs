@@ -21,7 +21,15 @@ pub struct ColorSwatch {
 
 impl ColorSwatch {
     pub fn new(color: Color) -> ColorSwatch {
-        ColorSwatch { color, size: 20.0, selected: false, round: false, label: None, acts: Acts::default(), pressable: false }
+        ColorSwatch {
+            color,
+            size: 20.0,
+            selected: false,
+            round: false,
+            label: None,
+            acts: Acts::default(),
+            pressable: false,
+        }
     }
     /// The side in points, 20 by default.
     pub fn size(mut self, s: f32) -> Self {

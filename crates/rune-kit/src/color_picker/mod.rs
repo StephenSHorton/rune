@@ -164,8 +164,14 @@ impl<S: 'static> ColorPicker<S> {
             })
             .build(k)
             .key(format!("{}-hex", self.key));
-        let preview = ColorSwatch::new(self.value.unwrap_or(Color::TRANSPARENT)).size(self.swatch).build(k).key("preview");
-        let mut e = col().gap(10.0).key(self.key.clone()).w(width).child(grid).child(row().gap(8.0).center_y().child(preview).child(field));
+        let preview =
+            ColorSwatch::new(self.value.unwrap_or(Color::TRANSPARENT)).size(self.swatch).build(k).key("preview");
+        let mut e = col()
+            .gap(10.0)
+            .key(self.key.clone())
+            .w(width)
+            .child(grid)
+            .child(row().gap(8.0).center_y().child(preview).child(field));
         if self.hue {
             let base = self.state.toned.or(self.value).unwrap_or(k.c.bg_accent);
             let set_hue = pick_hue(self.access.clone(), self.change.clone(), base);

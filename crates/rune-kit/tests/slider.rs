@@ -113,7 +113,8 @@ fn it_reads_as_a_slider_with_its_value() {
 
 #[test]
 fn a_disabled_slider_takes_no_input() {
-    let mut rt = Runtime::new(App { v: 0.5, disabled: true, ..App::default() }, view, (300.0, 100.0), Env::new(false, 1.0));
+    let mut rt =
+        Runtime::new(App { v: 0.5, disabled: true, ..App::default() }, view, (300.0, 100.0), Env::new(false, 1.0));
     rt.frame(0.0);
     rt.pointer_down(x(0.9), 30.0);
     rt.frame(0.0);
@@ -138,4 +139,14 @@ fn a_cancelled_drag_puts_the_value_back() {
     rt.frame(0.0);
     assert_eq!(rt.state.v, 0.5);
     assert!(rt.state.commits.is_empty(), "a cancel doesn't commit");
+}
+
+#[test]
+fn keys_in_one_frame_each_step_from_the_last() {
+    let mut rt = app(0.5);
+    key(&mut rt, Key::Tab);
+    rt.key(KeyEvent { key: Key::Right, mods: Mods::default() });
+    rt.key(KeyEvent { key: Key::Right, mods: Mods::default() });
+    rt.frame(0.0);
+    assert!((rt.state.v - 0.6).abs() < 1e-6, "{}", rt.state.v);
 }

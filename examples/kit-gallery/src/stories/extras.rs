@@ -32,17 +32,13 @@ pub fn kit_extras(s: &G, k: &Kit, _layer: &mut Vec<El>) -> El {
         .child(Avatar::new("Grace Hopper").status(c.warning.icon).build(k))
         .child(Avatar::new("Alan Turing").shape(AvatarShape::Rounded).build(k))
         .child(Avatar::new("Edsger Dijkstra").size(20.0).build(k));
-    let skeleton = row()
-        .gap(12.0)
-        .w(320.0)
-        .child(Skeleton::circle(40.0).build(k))
-        .child(
-            col()
-                .gap(8.0)
-                .grow(1.0)
-                .child(Skeleton::new().width(140.0).label("Loading profile").build(k))
-                .child(Skeleton::new().build(k)),
-        );
+    let skeleton = row().gap(12.0).w(320.0).child(Skeleton::circle(40.0).build(k)).child(
+        col()
+            .gap(8.0)
+            .grow(1.0)
+            .child(Skeleton::new().width(140.0).label("Loading profile").build(k))
+            .child(Skeleton::new().build(k)),
+    );
     let badges = row()
         .gap(8.0)
         .child(Badge::new("Done").variant(BadgeVariant::Success).build(k))
@@ -68,8 +64,10 @@ pub fn kit_extras(s: &G, k: &Kit, _layer: &mut Vec<El>) -> El {
                 .build(k),
         );
     }
-    let progress = col().w(320.0).gap(12.0).child(Progress::indeterminate().height(4.0).build(k)).child(
-        Progress::new(Some(0.6)).height(4.0).color(c.success.icon).track(c.layer_03).build(k),
-    );
+    let progress = col()
+        .w(320.0)
+        .gap(12.0)
+        .child(Progress::indeterminate().height(4.0).build(k))
+        .child(Progress::new(Some(0.6)).height(4.0).color(c.success.icon).track(c.layer_03).build(k));
     col().padding(24.0).gap(20.0).children([slider, avatars, skeleton, badges, buttons, swatches, progress])
 }

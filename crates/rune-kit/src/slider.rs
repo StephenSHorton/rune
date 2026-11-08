@@ -224,7 +224,8 @@ fn wire<S: 'static>(e: El, g: Geometry, change: Option<Erased>, commit: Option<E
     };
     let report = Rc::new(report);
     let r = report.clone();
-    let step = move |s: &mut S, steps: i32, tx: &mut Tx| r(s, g.snap(g.value + steps as f32 * g.key_step()), tx, true, true);
+    let step =
+        move |s: &mut S, steps: i32, tx: &mut Tx| r(s, g.snap(g.value + steps as f32 * g.key_step()), tx, true, true);
     let r = report.clone();
     let limit = move |s: &mut S, max: bool, tx: &mut Tx| r(s, if max { g.max } else { g.min }, tx, true, true);
     // The drag keeps the pointer's offset from the knob's centre when it grabbed the knob, so the

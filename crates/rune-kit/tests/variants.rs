@@ -16,8 +16,20 @@ fn view(s: &Case, cx: &mut Cx<Case>) -> El {
         1 => col()
             .child(Button::new("Join").tint(GREEN, Color::WHITE).build(&k).key("join"))
             .child(IconButton::new(k.glyph.close).label("Leave").tint(RED, Color::WHITE).build(&k).key("leave"))
-            .child(IconButton::new(k.glyph.close).label("Delete").variant(IconButtonVariant::Danger).build(&k).key("delete"))
-            .child(IconButton::new(k.glyph.check).label("Accept").variant(IconButtonVariant::Success).build(&k).key("accept")),
+            .child(
+                IconButton::new(k.glyph.close)
+                    .label("Delete")
+                    .variant(IconButtonVariant::Danger)
+                    .build(&k)
+                    .key("delete"),
+            )
+            .child(
+                IconButton::new(k.glyph.check)
+                    .label("Accept")
+                    .variant(IconButtonVariant::Success)
+                    .build(&k)
+                    .key("accept"),
+            ),
         2 => Select::new("wide", &["A", "B"])
             .appearance(SelectAppearance::Field)
             .width(420.0)
@@ -59,7 +71,8 @@ fn info(rt: &Runtime<Case>, key: &str) -> rune::ElementInfo {
 fn state_badges_take_their_roles_colours() {
     let k = Kit::neutral(false);
     let rt = run(0);
-    for (key, role) in [("success", k.c.success), ("warning", k.c.warning), ("danger", k.c.danger), ("info", k.c.info)] {
+    for (key, role) in [("success", k.c.success), ("warning", k.c.warning), ("danger", k.c.danger), ("info", k.c.info)]
+    {
         let b = info(&rt, key);
         assert_eq!(b.fill, role.bg, "{key} fill");
         assert_eq!(b.role, "status");
