@@ -15,6 +15,7 @@
 
 mod accordion;
 mod actions;
+mod avatar;
 mod badge;
 mod budget;
 mod card;
@@ -65,6 +66,8 @@ pub use actions::ButtonSize;
 pub use actions::ButtonVariant;
 pub use actions::IconButton;
 pub use actions::IconButtonVariant;
+pub use avatar::Avatar;
+pub use avatar::AvatarShape;
 pub use badge::Badge;
 pub use badge::BadgeVariant;
 pub use badge::Divider;
@@ -78,6 +81,7 @@ pub use dialog::Dialog;
 pub use feedback::Loader;
 pub use feedback::Progress;
 pub use feedback::ProgressCircle;
+pub use feedback::Skeleton;
 pub use feedback::Spinner;
 pub use field::Field;
 pub use keybind::Keybind;
