@@ -516,6 +516,9 @@ mod window_tests;
 #[path = "tooling/tests.rs"]
 mod tests;
 #[cfg(test)]
+#[path = "tooling/headless_clipboard_tests.rs"]
+mod headless_clipboard_tests;
+#[cfg(test)]
 #[path = "tooling/script_release_tests.rs"]
 mod script_release_tests;
 #[cfg(test)]

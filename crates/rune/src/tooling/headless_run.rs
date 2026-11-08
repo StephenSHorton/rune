@@ -20,6 +20,7 @@ pub struct HeadlessRun {
     pub(crate) end: f64,
     pub(crate) desktop: Option<PathBuf>,
     pub(crate) windows: std::sync::Arc<std::sync::Mutex<Vec<WindowFrame>>>,
+    pub(crate) clipboard: crate::clipboard::MemoryClipboard,
 }
 
 /// Where a `--desktop` run drew one window from time `t` on.
@@ -36,6 +37,16 @@ pub struct WindowFrame {
 }
 
 impl HeadlessRun {
+    /// The run's clipboard, in memory and shared by every window. A copy lands here (the OS
+    /// clipboard is never touched), so a `Tx::copy_checked` callback hears `Ok(())` and the app
+    /// can show its "Copied" state in a `--snap` or `--script` run; [`MemoryClipboard::text`]
+    /// reads what was copied, and [`MemoryClipboard::fail_writes`] makes later copies answer
+    /// `Err` to show the failure path. A paste reads it too.
+    ///
+    /// [`MemoryClipboard::text`]: crate::clipboard::MemoryClipboard::text
+    /// [`MemoryClipboard::fail_writes`]: crate::clipboard::MemoryClipboard::fail_writes
+    pub fn clipboard(&self) -> &crate::clipboard::MemoryClipboard { &self.clipboard }
+
     /// The `--desktop` backdrop, when the run composites every window over it.
     pub fn desktop(&self) -> Option<&Path> { self.desktop.as_deref() }
 

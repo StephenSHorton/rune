@@ -53,7 +53,10 @@ impl Tx {
     /// platform's reason it wasn't (no clipboard, the browser refused, another app holds it),
     /// so the app can say "Couldn't copy". It runs as an update, after the write. A later copy
     /// in the same handler, or before the shell writes this one, replaces it and `f` never
-    /// runs; so does a headless runtime with no clipboard.
+    /// runs. A `--snap` or `--script` run writes to its in-memory clipboard
+    /// ([`HeadlessRun::clipboard`](crate::tooling::HeadlessRun::clipboard)), so `f` hears
+    /// `Ok(())` there, or `Err` after that clipboard's `fail_writes`. A bare `Runtime` with
+    /// no shell and no `Runtime::use_clipboard` never runs `f`.
     ///
     /// ```ignore
     /// tx.copy_checked(link, |s: &mut App, result, _| s.toast = Some(match result {

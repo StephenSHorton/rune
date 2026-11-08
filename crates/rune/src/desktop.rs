@@ -254,6 +254,7 @@ pub(crate) fn run(windows: Vec<AnyWindowSpec>, selected: usize, args: Args, acce
         end: timeline.last_frame as f64 * timeline.dt,
         desktop: Some(backdrop.clone()),
         windows: frames_log.clone(),
+        clipboard: crate::clipboard::memory(),
     });
 
     let mut members: Vec<Box<dyn Member>> = windows.into_iter().enumerate()

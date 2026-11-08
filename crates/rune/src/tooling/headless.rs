@@ -95,6 +95,7 @@ pub(crate) fn headless_configured<S: 'static>(mut app: crate::app::App<S>, args:
         end: timeline.last_frame as f64 * timeline.dt,
         desktop: None,
         windows: Default::default(),
+        clipboard: crate::clipboard::memory(),
     });
     let fit_height = app.fit_content_height;
     let app_options = app.window_options.clone();
@@ -105,6 +106,7 @@ pub(crate) fn headless_configured<S: 'static>(mut app: crate::app::App<S>, args:
     let dark = args.theme.as_deref() != Some("light");
     let state_ms = launched.elapsed().as_secs_f64() * 1000.0;
     let mut rt = runtime_for(&spec, state, size, Env::new(dark, scale), std::sync::Arc::new(|| {}));
+    if let Some(run) = crate::tooling::headless_run::headless_run() { rt.use_clipboard(run.clipboard()); }
     crate::playground::attach(&mut rt, playground, &spec, args.playground.clone(), args.variant.clone(), false);
     let chrome = rt.headless_chrome(chrome, titlebar, app_options.borderless);
     rt.on_focus = on_focus;

@@ -130,6 +130,7 @@ impl<S: 'static> Window<S> {
         let size = own.size.unwrap_or(spec.size);
         let dark = own.theme.as_deref() != Some("light");
         let mut rt = crate::tooling::runtime_for(&spec, state, size, Env::new(dark, scale), Arc::new(|| {}));
+        if let Some(run) = crate::tooling::headless_run::headless_run() { rt.use_clipboard(run.clipboard()); }
         crate::playground::attach(&mut rt, playground, &spec, own.playground.clone(), own.variant.clone(), false);
         rt.on_focus = on_focus;
         rt.app_ime.hook = on_ime;
