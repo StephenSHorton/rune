@@ -328,6 +328,11 @@ impl<S: 'static> Runtime<S> {
         self.queue.push(Action::ClipboardRead(id, content));
     }
 
+    /// A checked copy's outcome, for its `Tx::copy_checked` callback.
+    pub(crate) fn copy_result(&mut self, id: u64, result: Result<(), String>) {
+        self.queue.push(Action::ClipboardCopied(id, result));
+    }
+
     /// Whether the focused editor requires secure native keyboard input.
     pub fn has_secure_focus(&self) -> bool {
         self.focused_input().is_some_and(|i| i.edit.is_secure())

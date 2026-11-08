@@ -666,6 +666,8 @@ pub struct Runtime<S: 'static> {
     pub(crate) read_requests: Vec<u64>,
     /// Their callbacks, until the clipboard answers.
     clipboard_reads: Vec<(u64, crate::el::ReadFn)>,
+    /// `Tx::copy_checked` callbacks, until their write is reported.
+    copy_reports: crate::clipboard::report::CopyReports,
     /// The plain text and pill ranges of this runtime's last copy that held pills, for web
     /// clipboard pastes where the OS worker does not own the pasteboard.
     pill_copy: Option<(zeroize::Zeroizing<String>, Vec<(std::ops::Range<usize>, String)>)>,
@@ -998,6 +1000,7 @@ impl<S: 'static> Runtime<S> {
             paste_request: None,
             read_requests: Vec::new(),
             clipboard_reads: Vec::new(),
+            copy_reports: Default::default(),
             pill_copy: None,
             next_clipboard_read: 0,
             clear_secret_request: false,

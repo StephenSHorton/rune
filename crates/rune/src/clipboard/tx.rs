@@ -18,6 +18,7 @@ impl Tx {
     /// Request a clipboard write from the shell after this handler finishes.
     pub fn copy(&mut self, text: impl Into<String>) {
         self.copy = Some(crate::ClipboardWrite::new(crate::ClipboardContent::new(text)));
+        self.copy_report = None;
     }
 
     /// Copy several forms at once: plain text for every app, HTML and RTF for apps that paste
@@ -33,6 +34,7 @@ impl Tx {
     /// ```
     pub fn copy_rich(&mut self, content: crate::ClipboardContent) {
         self.copy = Some(crate::ClipboardWrite::new(content));
+        self.copy_report = None;
     }
 
     /// Exclude this text from clipboard histories and clear it after `clear_after` if unchanged.
@@ -40,13 +42,14 @@ impl Tx {
     pub fn copy_secret(&mut self, text: impl Into<String>, clear_after: std::time::Duration) -> crate::SecretCopy {
         let (write, copy) = crate::ClipboardWrite::secret(text.into(), clear_after);
         self.copy = Some(write);
+        self.copy_report = None;
         copy
     }
 
     /// Clear the secret Rune copied last, from any window, if the clipboard still holds it
     /// (on lock, say). A secret copy asked for earlier in this handler is dropped.
     pub fn clear_secret_clipboard(&mut self) {
-        if self.copy.as_ref().is_some_and(crate::ClipboardWrite::is_secret) { self.copy = None; }
+        if self.copy.as_ref().is_some_and(crate::ClipboardWrite::is_secret) { self.copy = None; self.copy_report = None; }
         self.clear_secret = true;
     }
 

@@ -404,3 +404,32 @@ fn clipboard_requests_follow_handler_order_and_are_consumed_once() {
     rt.frame(1.0 / 120.0);
     assert_eq!(rt.copy_request.take().as_deref(), Some("response"));
 }
+
+#[test]
+fn a_checked_copy_hears_whether_the_clipboard_took_it() {
+    #[derive(Default)]
+    struct State { heard: Vec<Result<(), String>> }
+    fn view(_: &State, _: &mut Cx<State>) -> El { col().size(100.0, 40.0) }
+    let m = crate::clipboard::memory();
+    let mut rt = Runtime::new(State::default(), view, (100.0, 40.0), Env::new(true, 1.0));
+    rt.use_clipboard(&m);
+    rt.frame(0.0);
+    rt.update(|_, tx| tx.copy_checked("link", |s: &mut State, result, _| s.heard.push(result)));
+    rt.frame(0.0);
+    assert_eq!(m.text().as_deref().map(String::as_str), Some("link"));
+    assert_eq!(rt.state.heard, [Ok(())]);
+
+    m.fail_writes(Some("held by another app"));
+    rt.update(|_, tx| tx.copy_rich_checked(crate::ClipboardContent::new("rich").with_html("<b>rich</b>"), |s: &mut State, result, _| s.heard.push(result)));
+    rt.frame(0.0);
+    assert_eq!(rt.state.heard[1], Err("held by another app".into()), "a failed write says why");
+    assert_eq!(m.text().as_deref().map(String::as_str), Some("link"), "the clipboard kept what it had");
+
+    // A plain copy later in the same handler replaces the checked one, and its callback never runs.
+    m.fail_writes(None);
+    rt.update(|_, tx| { tx.copy_checked("first", |s: &mut State, result, _| s.heard.push(result)); tx.copy("second"); });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!(m.text().as_deref().map(String::as_str), Some("second"));
+    assert_eq!(rt.state.heard.len(), 2);
+}

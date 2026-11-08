@@ -47,7 +47,8 @@ impl Client {
     pub fn flush<S: 'static>(&self, rt: &mut Runtime<S>) {
         if rt.clipboard.is_some() { return flush_memory(rt); }
         rt.clear_secret_request = false;
-        if let Some(copy) = rt.copy_request.take() {
+        if let Some(mut copy) = rt.copy_request.take() {
+            self.route_report(&mut copy);
             if copy.is_secret() {
                 if let Some(slot) = copy.slot() {
                     slot.set(SecretState::Failed("secret clipboard writes are unsupported on web".into()));
@@ -59,10 +60,16 @@ impl Client {
                 let content = copy.content();
                 let png = content.image().map_or(&[][..], ClipboardImage::png);
                 let promise = crate::platform::web::platform::write_clipboard(content.text(), content.html().unwrap_or(""), png);
+                let report = copy.report.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    if wasm_bindgen_futures::JsFuture::from(promise).await.is_err() {
-                        web_sys::console::warn_1(&"Clipboard write denied by the browser.".into());
-                    }
+                    let result = match wasm_bindgen_futures::JsFuture::from(promise).await {
+                        Ok(_) => Ok(()),
+                        Err(_) => {
+                            web_sys::console::warn_1(&"Clipboard write denied by the browser.".into());
+                            Err("the browser denied the clipboard write".to_owned())
+                        }
+                    };
+                    if let Some(report) = report { report.send(result); }
                 });
             }
         }
