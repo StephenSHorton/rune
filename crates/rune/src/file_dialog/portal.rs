@@ -1,10 +1,10 @@
 //! xdg-desktop-portal FileChooser over zbus. Each dialog runs on its own thread with a
 //! current-thread tokio runtime, so any executor can poll it and the event loop never blocks.
 //! Dropping the future closes the portal request.
-use super::{FileDialogError, FileDialogKind, FileDialogOptions};
+use super::{FileDialogError, FileDialogFilesResult, FileDialogKind, FileDialogOptions};
 use super::portal_format::{filters, outcome, parent_window, path_bytes};
 use futures_util::StreamExt;
-use std::{collections::HashMap, path::PathBuf, sync::atomic::{AtomicU32, AtomicU64, Ordering}, time::Duration};
+use std::{collections::HashMap, sync::atomic::{AtomicU32, AtomicU64, Ordering}, time::Duration};
 use tokio::sync::oneshot;
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use zbus::{Connection, OwnedObjectPath, OwnedVariant, Proxy, Variant, fdo};
@@ -52,6 +52,7 @@ fn request_options<'a>(kind: FileDialogKind, options: &'a FileDialogOptions, tok
         map.insert("current_folder", Variant::from(bytes));
     }
     if kind == FileDialogKind::Folder { map.insert("directory", Variant::from(true)); }
+    if kind == FileDialogKind::Files { map.insert("multiple", Variant::from(true)); }
     if kind == FileDialogKind::Save && let Some(name) = options.file_name.as_deref().filter(|s| !s.is_empty()) {
         map.insert("current_name", Variant::from(name));
     }
@@ -62,7 +63,7 @@ fn uris(results: &HashMap<String, OwnedVariant>) -> Vec<String> {
     results.get("uris").and_then(|v| v.try_clone().ok()).and_then(|v| Vec::<String>::try_from(v).ok()).unwrap_or_default()
 }
 
-pub(super) async fn show(kind: FileDialogKind, options: FileDialogOptions) -> Result<Option<PathBuf>, FileDialogError> {
+pub(super) async fn show(kind: FileDialogKind, options: FileDialogOptions) -> FileDialogFilesResult {
     let (reply, result) = oneshot::channel();
     let parent = parent_window(PARENT.load(Ordering::Relaxed));
     std::thread::Builder::new().name("rune-file-dialog".into()).spawn(move || {
@@ -75,7 +76,7 @@ pub(super) async fn show(kind: FileDialogKind, options: FileDialogOptions) -> Re
     result.await.unwrap_or_else(|_| Err(FileDialogError("file dialog worker stopped".into())))
 }
 
-async fn run(kind: FileDialogKind, options: FileDialogOptions, parent: String, mut reply: oneshot::Sender<Result<Option<PathBuf>, FileDialogError>>) {
+async fn run(kind: FileDialogKind, options: FileDialogOptions, parent: String, mut reply: oneshot::Sender<FileDialogFilesResult>) {
     let token = format!("rune_file_dialog_{}", TOKEN.fetch_add(1, Ordering::Relaxed));
     let started = tokio::time::timeout(RPC_TIMEOUT, async {
         // No session bus means this desktop cannot supply the portal.
@@ -93,7 +94,10 @@ async fn run(kind: FileDialogKind, options: FileDialogOptions, parent: String, m
             _ = reply.closed() => { let _ = conn.close().await; return Ok(None); }
         };
         // A folder is OpenFile's `directory` choice (portal version 3).
-        let method = match kind { FileDialogKind::Open | FileDialogKind::Folder => "OpenFile", FileDialogKind::Save => "SaveFile" };
+        let method = match kind {
+            FileDialogKind::Open | FileDialogKind::Folder | FileDialogKind::Files => "OpenFile",
+            FileDialogKind::Save => "SaveFile",
+        };
         let body = (parent.as_str(), options.title.as_str(), request_options(kind, &options, &token));
         let handle: OwnedObjectPath = portal.call(method, &body).await.map_err(dbus_error)?;
         if handle.as_str() != path {
@@ -128,12 +132,13 @@ async fn run(kind: FileDialogKind, options: FileDialogOptions, parent: String, m
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     #[test]
     fn reply_uris_are_read_from_the_results_map() {
         let list = vec!["file:///tmp/a%20b".to_string(), "file:///tmp/c".to_string()];
         let results = HashMap::from([("uris".to_string(), OwnedVariant::try_from(Variant::from(list.clone())).unwrap())]);
         assert_eq!(uris(&results), list);
-        assert_eq!(outcome(0, &uris(&results)).unwrap(), Some(PathBuf::from("/tmp/a b")));
+        assert_eq!(outcome(0, &uris(&results)).unwrap(), [PathBuf::from("/tmp/a b"), PathBuf::from("/tmp/c")]);
         assert!(uris(&HashMap::new()).is_empty());
         let mistyped = HashMap::from([("uris".to_string(), OwnedVariant::try_from(Variant::from(7u32)).unwrap())]);
         assert!(uris(&mistyped).is_empty());
@@ -148,6 +153,10 @@ mod tests {
         assert_eq!(open.get("current_folder"), Some(&Variant::from(b"/home/a/Downloads\0".to_vec())));
         assert!(!open.contains_key("current_name"));
         assert!(!open.contains_key("directory"));
+        assert!(!open.contains_key("multiple"));
+        let files = request_options(FileDialogKind::Files, &options, "t5");
+        assert_eq!(files.get("multiple"), Some(&Variant::from(true)));
+        assert!(files.contains_key("filters") && !files.contains_key("directory"));
         let folder = request_options(FileDialogKind::Folder, &options, "t4");
         assert_eq!(folder.get("directory"), Some(&Variant::from(true)));
         assert!(!folder.contains_key("filters"));

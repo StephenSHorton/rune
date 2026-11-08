@@ -1544,7 +1544,10 @@ Or ask from a handler, with no executor or waker to wire up:
 - The window shows the dialog once the handler's frame is done (a sheet on macOS, owned by
   the window on Windows, the portal's chooser on Linux) and keeps drawing while it's up. The
   answer runs the callback on a later frame, as `tx.read_clipboard` does. `tx.save_file` is
-  the same for a Save dialog, and `tx.open_folder` for an Open dialog that picks a folder
+  the same for a Save dialog, `tx.open_files` for an Open dialog that picks one or more files
+  (its callback gets `Result<Vec<PathBuf>, _>`, empty when cancelled; `"kind": "files"` in
+  `--tree`; `FileDialogs::open_files` for the async form), and `tx.open_folder` for an Open
+  dialog that picks a folder
   (`FileDialogKind::Folder`, `"kind": "folder"` in `--tree`; filters and file name don't apply;
   the portal's `directory` chooser on Linux).
 - One dialog at a time: asked for while one is open, the callback gets an error at once and
@@ -1554,8 +1557,10 @@ Or ask from a handler, with no executor or waker to wire up:
 - Without the `native-file-dialog` feature, and on the web, the callback gets an error.
 - Headless runs (`--tree`, scripts, tests) keep it open as `fileDialog` in `--tree` (kind,
   title, filters, directory, fileName) until `{"type": "file-dialog", "path": "/exports/a.json"}`
-  or `{"type": "file-dialog-cancel"}` answers it. Tests read it with `Runtime::file_dialog()`
-  and answer with `Runtime::resolve_file_dialog(Some(path))` or `(None)`.
+  (`"paths": ["/a.png", "/b.png"]` for several files) or `{"type": "file-dialog-cancel"}`
+  answers it. Tests read it with `Runtime::file_dialog()` and answer with
+  `Runtime::resolve_file_dialog(Some(path))` or `(None)`, or `resolve_file_dialog_files(paths)`.
+  Scripted fixtures queue a multi-file answer with `FileDialogs::scripted(..).then_files(paths)`.
 
 ### Dragging out to other apps (`drag_out`)
 
