@@ -27,6 +27,9 @@ fn view(s: &Case, cx: &mut Cx<Case>) -> El {
             )
             .child(Avatar::new("Ada Lovelace").size(20.0).build(&k).key("plain"))
             .child(Avatar::new("Grace Hopper").image(&s.photo).build(&k).key("grace")),
+        4 => col().w(200.0).child(
+            Progress::indeterminate().height(4.0).radius(0.0).label("Updating").label_hidden().build(&k).key("bar"),
+        ),
         _ => unreachable!(),
     };
     col().w_full().h_full().child(body)
@@ -133,4 +136,15 @@ fn an_avatar_sizes_one_letter_and_drops_it_under_a_loaded_picture() {
     assert!(lookup(&rt, "grace/initials").is_none(), "no initials under a picture with pixels");
     assert_eq!(info(&rt, "grace/face").fill, Color::TRANSPARENT, "no colour under it either");
     assert!(lookup(&rt, "grace/image").is_some());
+}
+
+#[test]
+fn a_square_bar_keeps_its_label_for_assistive_technology_only() {
+    let mut rt = run(4, false);
+    rt.frame(0.1);
+    assert_eq!(info(&rt, "bar/track").radius, 0.0);
+    assert_eq!(info(&rt, "bar/fill").radius, 0.0, "the sweep's segment is square too");
+    assert!(lookup(&rt, "bar/header").is_none(), "no visible header");
+    let bar = info(&rt, "bar");
+    assert_eq!((bar.role, bar.label.as_deref()), ("progressbar", Some("Updating")));
 }
