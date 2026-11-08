@@ -34,6 +34,7 @@ mod families;
 mod language;
 pub use language::set_language;
 mod line_break;
+mod mono_fallback;
 mod span;
 mod system_fonts;
 mod default_fonts;
@@ -167,6 +168,8 @@ pub struct TextSystem {
     system_mono: Option<Vec<String>>,
     /// The sans or mono slot names `ui-monospace` (see `family_list`).
     slot_system_mono: bool,
+    /// Mono text takes the system mono families first (`mono_fallback.rs`); `None` until asked.
+    mono_fallback: Option<bool>,
     /// Bit `i` is set once `fallback::SCRIPT_FONTS[i]` has been looked up.
     scripts: u64,
     font_files: LoadedFiles,
@@ -301,6 +304,7 @@ impl TextSystem {
             math: None,
             system_mono: None,
             slot_system_mono: names_system_mono(families.0) || names_system_mono(families.1),
+            mono_fallback: None,
             scripts: 0,
             font_files,
             atlas: Atlas::new(),
@@ -353,7 +357,8 @@ impl TextSystem {
 
     /// The font text in `family` at `weight` shapes with first.
     fn primary_font(&mut self, family: Family, weight: f32, italic: bool) -> Option<parley::fontique::QueryFont> {
-        if family == Family::SystemMono || self.slot_system_mono {
+        let mono_first = family == Family::Mono && self.mono_falls_back();
+        if family == Family::SystemMono || self.slot_system_mono || mono_first {
             self.system_mono();
         }
         let system = self.system_mono.as_deref().unwrap_or_default();
@@ -365,9 +370,9 @@ impl TextSystem {
         };
         let names = match family {
             Family::Sans => named(&self.sans),
-            Family::Mono => named(&self.mono),
+            Family::Mono if !mono_first => named(&self.mono),
             Family::Named(name) => std::iter::once(name.to_owned()).chain(named(&self.sans)).collect(),
-            Family::SystemMono => system.iter().cloned().chain(named(&self.mono)).collect(),
+            Family::Mono | Family::SystemMono => system.iter().cloned().chain(named(&self.mono)).collect(),
         };
         let mut query = self.font_cx.collection.query(&mut self.font_cx.source_cache);
         query.set_families(names.iter().map(|name| parley::fontique::QueryFamily::Named(name)));
@@ -621,7 +626,8 @@ impl TextSystem {
             settings.extend(extra);
             settings
         };
-        if style.family == Family::SystemMono || self.slot_system_mono {
+        let mono_first = (style.family == Family::Mono || spans.iter().any(|s| s.mono)) && self.mono_falls_back();
+        if style.family == Family::SystemMono || self.slot_system_mono || mono_first {
             self.system_mono();
         }
         let math = self.math.as_deref().unwrap_or(&[]);
@@ -633,9 +639,16 @@ impl TextSystem {
                 .chain(self.symbol_families.iter().chain(math).map(|name| FontFamilyName::named(name)))
                 .collect::<Vec<_>>()
         };
+        let mono_stack = || {
+            let mut families = with_symbols(self.mono.as_str());
+            if mono_first {
+                families.splice(0..0, system.iter().map(|name| FontFamilyName::named(name)));
+            }
+            families
+        };
         let sans = match style.family {
             Family::Sans => with_symbols(self.sans.as_str()),
-            Family::Mono => with_symbols(self.mono.as_str()),
+            Family::Mono => mono_stack(),
             Family::Named(name) => {
                 let mut families = with_symbols(self.sans.as_str());
                 families.insert(0, FontFamilyName::named(name));
@@ -647,7 +660,7 @@ impl TextSystem {
                 families
             }
         };
-        let mono = with_symbols(self.mono.as_str());
+        let mono = mono_stack();
         let language = self.language;
         // Routed clusters try their fallback first, then the run's own stack (mono spans included).
         // Each of the four {math, emoji} × {sans, mono} stacks is built at most once.
