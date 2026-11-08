@@ -13,28 +13,46 @@ fn view(s: &Case, cx: &mut Cx<Case>) -> El {
     let body = match s.0 {
         0 => col()
             .child(row().child(Badge::new("Done").build(&k).key("default")))
-            .child(row().child(
-                Badge::new("Owner")
-                    .variant(BadgeVariant::Success)
-                    .pill()
-                    .height(20.0)
-                    .padding(8.0)
-                    .border_width(1.0)
-                    .plain()
-                    .build(&k)
-                    .key("chip"),
-            ))
+            .child(
+                row().child(
+                    Badge::new("Owner")
+                        .variant(BadgeVariant::Success)
+                        .pill()
+                        .height(20.0)
+                        .padding(8.0)
+                        .border_width(1.0)
+                        .plain()
+                        .build(&k)
+                        .key("chip"),
+                ),
+            )
             .child(row().child(Badge::new(LONG).max_width(80.0).build(&k).key("long"))),
         1 => col()
             .child(row().child(IconButton::new(k.glyph.close).label("Close").build(&k).key("regular")))
             .child(row().child(IconButton::new(k.glyph.close).label("Mute").glyph_size(14.0).build(&k).key("small")))
-            .child(row().child(
-                IconButton::new(k.glyph.close).label("Hang up").variant(IconButtonVariant::GhostDanger).build(&k).key("hang"),
-            ))
-            .child(row().child(
-                IconButton::new(k.glyph.check).label("Answer").variant(IconButtonVariant::GhostSuccess).build(&k).key("answer"),
-            ))
-            .child(row().child(ColorSwatch::new(Color::WHITE).opener(true).on_press(|_: &mut Case| {}).build(&k).key("opener")))
+            .child(
+                row().child(
+                    IconButton::new(k.glyph.close)
+                        .label("Hang up")
+                        .variant(IconButtonVariant::GhostDanger)
+                        .build(&k)
+                        .key("hang"),
+                ),
+            )
+            .child(
+                row().child(
+                    IconButton::new(k.glyph.check)
+                        .label("Answer")
+                        .variant(IconButtonVariant::GhostSuccess)
+                        .build(&k)
+                        .key("answer"),
+                ),
+            )
+            .child(
+                row().child(
+                    ColorSwatch::new(Color::WHITE).opener(true).on_press(|_: &mut Case| {}).build(&k).key("opener"),
+                ),
+            )
             .child(row().child(ColorSwatch::new(Color::WHITE).on_press(|_: &mut Case| {}).build(&k).key("radio"))),
         _ => unreachable!(),
     };

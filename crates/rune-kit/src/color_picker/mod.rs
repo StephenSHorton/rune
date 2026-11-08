@@ -212,8 +212,7 @@ impl<S: 'static> ColorPicker<S> {
             let set_hue = pick_hue(self.access.clone(), self.change.clone(), base);
             let shown = self.value.and_then(hue_of).or_else(|| hue_of(base)).unwrap_or(0.0);
             // Seven 60° steps from red around to red, at the colour's lightness and chroma.
-            let stops: Vec<(f32, Color)> =
-                (0..7).map(|i| (i as f32 / 6.0, with_hue(base, i as f32 * 60.0))).collect();
+            let stops: Vec<(f32, Color)> = (0..7).map(|i| (i as f32 / 6.0, with_hue(base, i as f32 * 60.0))).collect();
             let mut slider = Slider::new(shown)
                 .range(0.0, 360.0)
                 .step(1.0)
