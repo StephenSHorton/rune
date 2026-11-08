@@ -1,0 +1,1 @@
+- **`ImageCache::load_raster`** decodes PNG, JPEG, WebP, GIF or ICNS bytes like `load`, but refuses SVG and gzipped SVGZ content with an `ImageError` instead of sniffing and rasterizing it, so an app showing untrusted bytes (an upload, a message attachment) needn't check magic numbers itself.

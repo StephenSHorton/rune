@@ -80,6 +80,8 @@ impl Image {
 
 enum Input {
     Encoded(Arc<[u8]>),
+    /// `ImageCache::load_raster`: encoded bytes that may not be SVG.
+    Raster(Arc<[u8]>),
     Rgba(u32, u32, Arc<[u8]>),
     Icon(std::path::PathBuf, u32),
     Svg(Arc<[u8]>, u32),
@@ -96,6 +98,8 @@ impl Input {
     fn decode(self) -> Result<Decoded, ImageError> {
         match self {
             Input::Encoded(bytes) => decode(&bytes),
+            Input::Raster(bytes) if is_svg(&bytes) => Err(ImageError("not a raster image: SVG and SVGZ are refused".into())),
+            Input::Raster(bytes) => decode(&bytes),
             Input::Rgba(w, h, bytes) => mip_chain(w, h, &bytes),
             Input::Svg(bytes, px) => svg_rgba(&bytes, px).and_then(|(w, h, bytes)| mip_chain(w, h, &bytes)),
             #[cfg(not(target_arch = "wasm32"))]
@@ -181,6 +185,18 @@ impl ImageCache {
         hash.update(&bytes);
         let id = *hash.finalize().as_bytes();
         self.request(id, Input::Encoded(bytes))
+    }
+
+    /// [`ImageCache::load`] for bytes from outside the app (an upload, a message, a web page):
+    /// PNG, JPEG, WebP, GIF or ICNS only. SVG or gzipped SVGZ content fails the image with an
+    /// [`ImageError`] instead of being parsed and rasterized, so untrusted bytes never reach
+    /// the SVG parser. Everything else decodes as `load` does, with the same size limits.
+    pub fn load_raster(&self, bytes: impl Into<Arc<[u8]>>) -> Image {
+        let bytes = bytes.into();
+        let mut hash = blake3::Hasher::new();
+        hash.update(b"rune-raster\0");
+        hash.update(&bytes);
+        self.request(*hash.finalize().as_bytes(), Input::Raster(bytes))
     }
 
     /// SVG or SVGZ bytes rasterized to fit `size_pt` points square at `scale` device pixels per
@@ -659,6 +675,8 @@ pub(crate) use from_url::font_file;
 
 #[cfg(test)]
 mod mip_tests;
+#[cfg(test)]
+mod raster_tests;
 
 #[cfg(test)]
 mod tests {
