@@ -1,5 +1,5 @@
 //! Modal surface; focus, dismissal and background inertness belong to Rune.
-use rune::{El, TextStyle, col, el, row, text};
+use rune::{El, ScrollSpec, TextStyle, col, el, row, text};
 use crate::{ControlSize, IconButton, IconButtonVariant, Kit, shadows};
 
 pub struct Dialog {
@@ -24,8 +24,9 @@ impl Dialog {
     pub fn child(mut self, body: El) -> Self { self.body.push(body); self }
     pub fn width(mut self, width: f32) -> Self { self.width = width; self }
     /// Sizes the panel to its header and body instead of the standard 368 point height, for
-    /// short dialogs such as a confirmation. Content taller than the window isn't scrolled, so
-    /// put a scroll view in the body if it can grow.
+    /// short dialogs such as a confirmation. A body taller than the window leaves room for
+    /// scrolls under the header, the panel at most as tall as the window less its 16 point
+    /// margins.
     pub fn fit(mut self) -> Self { self.fit = true; self }
     pub fn click_outside(mut self, close: bool) -> Self { self.outside = close; self }
     pub fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + Clone + 'static) -> Self {
@@ -42,18 +43,24 @@ impl Dialog {
             .control_size(ControlSize::Regular).label("Close").build(k).key("close");
         if let Some(button) = self.button { dismiss = button(dismiss); }
         dismiss = dismiss.size(20.0, 20.0).mt(-2.0).mr(-2.0);
-        let mut title = col().grow(1.0).gap(4.0).child(text(self.title.clone())
+        // Title and description wrap inside the panel, beside the close button.
+        let mut title = col().key("title").grow(1.0).shrink().gap(4.0).child(text(self.title.clone())
             .font(if self.description.is_some() { TextStyle { size: 15.0, tracking: -0.13, ..k.ty.ui_medium }.lh(20.0) }
-                else { k.ty.ui_medium.lh(16.0) }).color(k.c.text_base));
+                else { k.ty.ui_medium.lh(16.0) }).color(k.c.text_base).wrap());
         if let Some(description) = self.description.clone() {
-            title = title.child(text(description).font(k.ty.ui.lh(20.0)).color(k.c.text_muted));
+            title = title.child(text(description).key("description").font(k.ty.ui.lh(20.0)).color(k.c.text_muted).wrap());
         }
-        let body = col().key("body").w_full().children(self.body);
-        let (panel, body) = if self.fit { (col(), body) } else { (col().h(368.0), body.grow(1.0)) };
+        let (panel, body) = if self.fit {
+            // At most the layer's height; the body scrolls in what the header leaves.
+            let content = col().key("content").w_full().children(self.body);
+            (col().max_h_full(), col().key("body").w_full().shrink().min_h(0.0).scroll(ScrollSpec { stick_bottom: false }).child(content))
+        } else {
+            (col().h(368.0), col().key("body").w_full().children(self.body).grow(1.0))
+        };
         let panel = panel.description(self.description.unwrap_or_default());
         let panel = shadows(k, panel.key(format!("{}-dialog", self.key)).role("dialog").label(self.title.clone())
             .w_full().max_w(self.width).radius(6.0).fill(k.c.layer_01)
-            .child(row().key("header").w_full().padding(16.0).items_start().child(title).child(dismiss))
+            .child(row().key("header").w_full().padding(16.0).gap(8.0).items_start().child(title).child(dismiss))
             .child(body)
             .token_motion(k.motion.overlay), &k.elevation.overlay);
         let panel = close(panel).modal_click_outside(self.outside);

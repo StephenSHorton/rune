@@ -205,6 +205,7 @@ pub struct Button {
     expanded: Option<bool>,
     help: Option<String>,
     shortcut: Option<String>,
+    wrap: bool,
     acts: Acts,
 }
 
@@ -233,11 +234,20 @@ impl Button {
             expanded: None,
             help: None,
             shortcut: None,
+            wrap: false,
             acts: Acts::default(),
         }
     }
     pub fn variant(mut self, v: ButtonVariant) -> Self {
         self.variant = v;
+        self
+    }
+    /// Let a long label wrap onto more lines, centred, when the button is narrower than it:
+    /// bound the built button's width (`.build(&k).max_w(240.0)`, or a column that sets it)
+    /// and it grows taller from its control height, keeping its padding. Unwrapped, a label
+    /// stays on one line.
+    pub fn wrap(mut self) -> Self {
+        self.wrap = true;
         self
     }
     /// The button's size, as AppKit's: Regular (24 points tall) unless set.
@@ -350,7 +360,10 @@ impl Button {
         let interactive = self.variant != ButtonVariant::Loading;
         let enabled = self.state != State::Disabled && interactive;
         let tip = compose_help(self.help.as_deref(), Some(&self.label), self.shortcut.as_deref());
-        let mut e = row().role("button").label(self.label.clone()).h(h).px(px).gap(gap).center().radius(radius);
+        let mut e = row().role("button").label(self.label.clone()).px(px).gap(gap).center().radius(radius);
+        // A wrapping label grows the button from its control height, its lines keeping the
+        // padding one line has above and below.
+        e = if self.wrap { e.min_h(h).py(((h - font.line_px()) / 2.0).max(2.0)).shrink() } else { e.h(h) };
         if let Some(t) = tip {
             e = e.help(t);
         }
@@ -363,6 +376,7 @@ impl Button {
             e = e.child(ic);
         }
         e = match self.look {
+            Label::Text if self.wrap => e.child(text(self.label).key("label").font(font).color(ink).wrap().align(rune::Align::Center).shrink().a11y_hidden()),
             Label::Text => e.child(text(self.label).key("label").font(font).color(ink).a11y_hidden()),
             // The button's edges spring on the label's own curve, so the padding holds while
             // the label grows or shrinks.

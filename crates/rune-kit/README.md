@@ -120,6 +120,11 @@ context menus via `.at(x, y)`), Tooltip (compact, standard, large), HoverCard, T
 ToastRegion, Card, List, Accordion, Collapsible, Badge, Divider, Keybind, Spinner, Loader,
 Progress, ProgressCircle, SegmentedControl.
 
+`Button::new(label).wrap()` lets a long label wrap onto centred lines when the built button's
+width is bounded (`.build(&k).max_w(240.0)`); the button grows taller from its control height.
+`Dialog` wraps a long title and description beside its close button, and a `.fit()` dialog is
+at most as tall as the window, its body scrolling under the header.
+
 `Button::new(label).rolling("import-label")` rolls the label's changed characters
 (`RollingText`) and springs the button's width with it; `.label_with(|font, ink| ..)` draws any
 label element in the button's font and ink. The text stays the button's accessible label.
