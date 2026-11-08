@@ -432,6 +432,10 @@ pub enum IconButtonVariant {
     Danger,
     /// A positive action: the neutral button with the success role's icon colour.
     Success,
+    /// A ghost button (no fill until hovered) with the danger role's icon colour.
+    GhostDanger,
+    /// A ghost button (no fill until hovered) with the success role's icon colour.
+    GhostSuccess,
 }
 
 /// A square icon-only button: `IconButton::new(&icons::PLUS).build(&kit)`.
@@ -445,6 +449,7 @@ pub struct IconButton {
     label: Option<String>,
     help: Option<String>,
     shortcut: Option<String>,
+    glyph: Option<f32>,
     acts: Acts,
 }
 
@@ -460,6 +465,7 @@ impl IconButton {
             label: None,
             help: None,
             shortcut: None,
+            glyph: None,
             acts: Acts::default(),
         }
     }
@@ -482,6 +488,12 @@ impl IconButton {
     #[allow(deprecated)]
     pub fn size(mut self, s: ButtonSize) -> Self {
         self.size = Size::Legacy(s);
+        self
+    }
+    /// The icon's side in points, in place of the control size's (12 for Mini, 18 for
+    /// ExtraLarge, 16 otherwise). The button keeps its size.
+    pub fn glyph_size(mut self, points: f32) -> Self {
+        self.glyph = Some(points.max(1.0));
         self
     }
     pub fn state(mut self, s: State) -> Self {
@@ -568,13 +580,26 @@ impl IconButton {
                 s.icon = k.c.icon_muted;
                 s
             }
+            IconButtonVariant::GhostDanger | IconButtonVariant::GhostSuccess => {
+                let mut s = skin(k, ButtonVariant::Ghost);
+                let role = if self.variant == IconButtonVariant::GhostDanger { k.c.danger } else { k.c.success };
+                (s.ink, s.icon) = (role.fg, role.fg);
+                s
+            }
         };
+        let glyph = self.glyph.unwrap_or(glyph);
         if self.state == State::Pressed && self.variant == IconButtonVariant::GhostMuted && self.tint.is_none() {
             s.icon = k.c.icon_base;
         }
         if self.expanded == Some(true)
             && self.tint.is_none()
-            && matches!(self.variant, IconButtonVariant::Ghost | IconButtonVariant::GhostMuted)
+            && matches!(
+                self.variant,
+                IconButtonVariant::Ghost
+                    | IconButtonVariant::GhostMuted
+                    | IconButtonVariant::GhostDanger
+                    | IconButtonVariant::GhostSuccess
+            )
         {
             s.fill = s.pressed;
             s.icon = if self.variant == IconButtonVariant::GhostMuted { k.c.icon_base } else { s.icon };
