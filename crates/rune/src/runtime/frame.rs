@@ -171,7 +171,8 @@ impl<S: 'static> Runtime<S> {
             self.clear_secret_request = true;
             self.pill_copy = None;
         }
-        if let Some(copy) = tx.copy.take() {
+        if let Some(mut copy) = tx.copy.take() {
+            self.copy_reports.attach(&mut copy, self.copy_request.as_ref(), tx.copy_report.take(), &mut self.next_clipboard_read);
             self.pill_copy = (!copy.is_secret())
                 .then(|| copy.content().html())
                 .flatten()

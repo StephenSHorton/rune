@@ -1170,6 +1170,30 @@ impl El {
         self
     }
 
+    /// Slides this element's dashed strokes ([`Shape::dashed`](crate::Shape::dashed)) along
+    /// their lines at `speed` points a second, forever, as React Flow's animated edges and
+    /// marching ants do; negative runs them back toward each line's start. The renderer moves
+    /// them on the shared clock, so the view doesn't rebuild and many edges stay cheap. Under
+    /// Reduce Motion the dashes stand still. Set the shape first (`canvas(shape)` does); a
+    /// shape with no dashed stroke, or a `speed` of 0, does nothing. It takes this element's
+    /// [`El::looping`] slot. Strokes with different patterns slide by the first one's.
+    ///
+    /// ```
+    /// use rune::{Color, Shape, canvas};
+    /// let edge = Shape::new().stroke(vec![[0.0, 8.0], [160.0, 8.0]], 1.0, Color::WHITE).dashed(5.0, 5.0);
+    /// let _el = canvas(edge).size(160.0, 16.0).dash_flow(24.0);
+    /// ```
+    pub fn dash_flow(self, speed: f32) -> Self {
+        let period = self.vis.shape.as_ref().and_then(|s| s.dash_period());
+        match period {
+            Some(length) if speed.is_finite() && speed != 0.0 => {
+                let spec = rune_motion::LoopSpec::march(f64::from(length / speed.abs()), length.copysign(speed));
+                self.looping(spec)
+            }
+            _ => self,
+        }
+    }
+
     /// Identity among siblings. Siblings need unique keys: when two share one, the first keeps
     /// it, each later one is renamed `key#dup1`, `key#dup2`, ... and Rune prints a warning naming
     /// both call sites once per key.

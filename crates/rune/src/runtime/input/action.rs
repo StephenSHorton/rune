@@ -48,6 +48,8 @@ pub(super) enum Action {
     Paste(crate::ClipboardContent, Option<Option<String>>),
     /// A `Tx::read_clipboard` callback's id and what the clipboard held.
     ClipboardRead(u64, crate::ClipboardContent),
+    /// A `Tx::copy_checked` callback's id and how the write went.
+    ClipboardCopied(u64, Result<(), String>),
     /// A `Tx::open_file` or `Tx::save_file` callback's id and the dialog's answer.
     FileDialog(u64, crate::file_dialog::FileDialogFilesResult),
     Focus(String, f32, f32),
@@ -158,6 +160,7 @@ fn handler_name(action: &Action) -> &'static str {
         Action::Ime(_) => "a text input's edit",
         Action::Paste(..) => "on_paste",
         Action::ClipboardRead(..) => "a `read_clipboard` callback",
+        Action::ClipboardCopied(..) => "a `copy_checked` callback",
         Action::FileDialog(..) => "a file dialog callback",
         _ => "a handler",
     })
@@ -194,9 +197,9 @@ pub(super) fn merge(tx: &mut Tx, one: Tx) {
     tx.popups.extend(one.popups);
     tx.file_dialogs.extend(one.file_dialogs);
     if let Some(request) = one.window_frame { tx.window_frame = Some(tx.window_frame.unwrap_or_default().merge(request)); }
-    if one.clear_secret && tx.copy.as_ref().is_some_and(crate::ClipboardWrite::is_secret) { tx.copy = None; }
+    if one.clear_secret && tx.copy.as_ref().is_some_and(crate::ClipboardWrite::is_secret) { tx.copy = None; tx.copy_report = None; }
     tx.clear_secret |= one.clear_secret;
-    if one.copy.is_some() { tx.copy = one.copy; }
+    if one.copy.is_some() { tx.copy = one.copy; tx.copy_report = one.copy_report; }
     tx.shell = tx.shell.max(one.shell);
     tx.minimize |= one.minimize;
     tx.toggle_maximized |= one.toggle_maximized;
@@ -488,6 +491,11 @@ impl<S: 'static> Runtime<S> {
                 let Some(i) = self.clipboard_reads.iter().position(|(read, _)| *read == id) else { return false };
                 let (_, f) = self.clipboard_reads.remove(i);
                 f(states!(self), &content, &mut one);
+                true
+            }
+            Action::ClipboardCopied(id, result) => {
+                let Some(f) = self.copy_reports.take(id) else { return false };
+                f(states!(self), result, &mut one);
                 true
             }
             Action::FileDialog(id, result) => self.run_file_dialog(id, result, &mut one),

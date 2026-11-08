@@ -59,12 +59,14 @@ fn pick(hwnd: HWND, context: &Context) -> Option<String> {
         let popup = CreatePopupMenu();
         if popup.is_null() { return None; }
         for (index, item) in menu.iter().enumerate() {
-            match item {
-                TrayItem::Action { label, enabled, .. } => {
-                    let flags = if *enabled { MF_STRING } else { MF_STRING | MF_GRAYED };
+            match item.label() {
+                Some(label) => {
+                    let mut flags = MF_STRING;
+                    if !item.is_enabled() { flags |= MF_GRAYED; }
+                    if item.is_checked() == Some(true) { flags |= MF_CHECKED; }
                     AppendMenuW(popup, flags, index + 1, wide(label).as_ptr());
                 }
-                TrayItem::Separator => { AppendMenuW(popup, MF_SEPARATOR, 0, ptr::null()); }
+                None => { AppendMenuW(popup, MF_SEPARATOR, 0, ptr::null()); }
             }
         }
         let mut at = POINT { x: 0, y: 0 };
@@ -74,7 +76,7 @@ fn pick(hwnd: HWND, context: &Context) -> Option<String> {
         let picked = TrackPopupMenu(popup, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, at.x, at.y, 0, hwnd, ptr::null());
         PostMessageW(hwnd, WM_NULL, 0, 0);
         DestroyMenu(popup);
-        match menu.get((picked as usize).checked_sub(1)?) { Some(TrayItem::Action { id, .. }) => Some(id.clone()), _ => None }
+        menu.get((picked as usize).checked_sub(1)?)?.picked().map(str::to_owned)
     }
 }
 

@@ -1,6 +1,6 @@
-//! Vector shapes: a filled waveform envelope, polylines, meters, a Bézier path and a concave
-//! polygon. `cargo run -p shapes -- --snap shapes.png` renders it headless; time animates the
-//! waveform, so `--at 1.5` shows another moment.
+//! Vector shapes: a filled waveform envelope, polylines, meters, a Bézier path, a concave
+//! polygon and dashed edges, one flowing. `cargo run -p shapes -- --snap shapes.png` renders it
+//! headless; time animates the waveform, so `--at 1.5` shows another moment.
 
 use rune::{AppSpec, Color, Cx, El, LineCap, Path, Shape, Tx, canvas, col, row, text};
 
@@ -111,6 +111,17 @@ fn curves() -> Shape {
         .line([420.0, 10.0], [480.0, 86.0], 2.0, LineCap::Butt, INK)
 }
 
+/// Two nodes joined by curved edges: one with dashes flowing toward its target, one dotted and
+/// still.
+fn edges() -> (Shape, Shape) {
+    let flowing = Path::new().move_to([10.0, 20.0]).cubic_to([120.0, 20.0], [120.0, 76.0], [230.0, 76.0]);
+    let dotted = Path::new().move_to([10.0, 76.0]).cubic_to([120.0, 76.0], [120.0, 20.0], [230.0, 20.0]);
+    (
+        Shape::new().stroke_path(&flowing, 1.5, LineCap::Butt, ACCENT).dashed(5.0, 5.0),
+        Shape::new().stroke_path(&dotted, 2.0, LineCap::Round, SOFT).dashed(0.0, 5.0),
+    )
+}
+
 fn label(s: &str) -> El {
     text(s).color(INK)
 }
@@ -155,6 +166,14 @@ fn view(s: &State, _: &mut Cx<State>) -> El {
                         .child(canvas(curves()).key("curves").size(490.0, 96.0)),
                 ),
         )
+        .child(label("Dashed edges: flowing and dotted"))
+        .child({
+            let (flowing, dotted) = edges();
+            row()
+                .gap(24.0)
+                .child(canvas(flowing).key("flowing").size(240.0, 96.0).dash_flow(20.0))
+                .child(canvas(dotted).key("dotted").size(240.0, 96.0))
+        })
 }
 
 fn poll(s: &mut State, t: f64, _: &mut Tx) -> bool {
@@ -163,5 +182,5 @@ fn poll(s: &mut State, t: f64, _: &mut Tx) -> bool {
 }
 
 fn main() {
-    rune::run(AppSpec { poll: Some(poll), ..AppSpec::new("Shapes", (820.0, 360.0), || State { t: 0.0 }, view) });
+    rune::run(AppSpec { poll: Some(poll), ..AppSpec::new("Shapes", (820.0, 500.0), || State { t: 0.0 }, view) });
 }

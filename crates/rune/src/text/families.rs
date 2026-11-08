@@ -64,6 +64,7 @@ impl TextSystem {
         self.families = (sans.to_owned(), mono.to_owned());
         (self.sans, self.mono) = slots(sans, mono);
         self.slot_system_mono = names_system_mono(sans) || names_system_mono(mono);
+        self.mono_fallback = None;
         self.drop_shaped();
         true
     }
