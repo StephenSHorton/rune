@@ -1,0 +1,1 @@
+- **Text with line breaks aligns each line.** `text("a\nlonger line").align(Align::Center)` (or `Align::End`) now centres (or end-aligns) each line inside the block, as wrapped text already did, instead of starting every line at the block's left edge.

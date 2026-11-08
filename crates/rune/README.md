@@ -1261,6 +1261,9 @@ popup with `.anchored_to_caret("composer", Side::Bottom, Align::Start, 4.0)` (or
 moves, and sits beside the field's box while it has no focus. Kit's `PopupList::at_caret` and
 `Popover::at_caret` use it.
 
+Text with line breaks aligns each line by `El::align`: `text("Saved\n3 files").align(Align::Center)`
+centres both lines, as wrapped text (`.wrap()`) centres each line in its width.
+
 Put `.on_paste(|s: &mut State, text: &str, tx| { ... })` on the view root (or modal
 root) to handle Cmd/Ctrl-V when no field is focused. `tx.request_paste()` requests
 the same asynchronous clipboard read from a button, including in overlays.
