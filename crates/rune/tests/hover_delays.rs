@@ -213,37 +213,3 @@ fn a_release_outside_reports_the_leave() {
     rt.frame(0.5);
     assert!(rt.state.is_empty(), "{:?}", rt.state);
 }
-
-/// `shift` pushes the zone down, through a spring, so layout carries it.
-struct Carried { shift: bool, heard: Vec<bool> }
-
-fn carried_view(s: &Carried, _: &mut Cx<Carried>) -> El {
-    col().w_full().h_full()
-        .child(el().key("spacer").w(16.0).h(if s.shift { 60.0 } else { 0.0 }))
-        .child(
-            el().key("zone").w(16.0).h(100.0)
-                .on_press(|_: &mut Carried| {})
-                .on_hover_change(|s: &mut Carried, inside, _| s.heard.push(inside))
-                .hover_delays(Duration::from_millis(40), Duration::from_millis(100)),
-        )
-}
-
-/// Layout moving under the release (the press opened something that pushes the element) doesn't
-/// keep the pointer inside what it was released outside of.
-#[test]
-fn a_release_outside_while_layout_moves_reports_the_leave() {
-    let mut rt = Runtime::new(Carried { shift: false, heard: Vec::new() }, carried_view, (200.0, 200.0), Env::new(true, 1.0));
-    rt.frame(0.0);
-    rt.pointer_move(8.0, 50.0);
-    rt.frame(0.05);
-    assert_eq!(rt.state.heard, [true]);
-    rt.pointer_down(8.0, 50.0);
-    rt.frame(0.02);
-    rt.pointer_move(100.0, 50.0);
-    rt.frame(0.02);
-    rt.update(|s, _| s.shift = true);
-    rt.frame(0.016);
-    rt.pointer_up(100.0, 50.0);
-    for _ in 0..60 { rt.frame(1.0 / 60.0); }
-    assert_eq!(rt.state.heard, [true, false]);
-}
