@@ -118,7 +118,28 @@ RadioGroup/RadioItem, TextInput, TextArea, TextField (older), Field, Select (inl
 triggers, grouped), Popover, Menu (compact and standard, checkbox/radio items, submenus,
 context menus via `.at(x, y)`), Tooltip (compact, standard, large), HoverCard, Toast and
 ToastRegion, Card, List, Accordion, Collapsible, Badge, Divider, Keybind, Spinner, Loader,
-Progress, ProgressCircle, SegmentedControl.
+Progress, ProgressCircle, SegmentedControl, Slider, Avatar, Skeleton, ColorSwatch and
+ColorPicker. `rune-kit--extras` in the gallery shows the last five with the state badges and
+tinted buttons.
+
+- `Slider::new(v).range(min, max).step(s).label("Volume").on_change(|s: &mut App, v, tx| ..)`
+  drags (keeping the grab offset), jumps on a track press, steps on the arrow, Page and
+  Home/End keys, and puts a cancelled drag back; `.on_commit` hears only settled values.
+- `Avatar::new(name).image(&pixels).status(colour)` shows initials on a colour picked from the
+  name until the picture has pixels; `.shape(AvatarShape::Rounded)` squares it.
+- `Skeleton::new().width(w).height(h)` (or `Skeleton::circle(d)`) pulses while content loads and
+  holds still under reduced motion. `Progress::indeterminate()` sweeps; `.height`, `.color`
+  and `.track` restyle a bar.
+- `ColorPicker::new(key, &s.picker, |s: &mut App| &mut s.picker).value(c).hue(true).on_change(..)`
+  is preset swatches, a hex field and a hue slider; `ColorSwatch` is one chip.
+- `BadgeVariant::{Success, Warning, Danger, Info}` take the kit's `StateColors`;
+  `IconButtonVariant::{Danger, Success}` colour the icon, and `Button::tint(fill, ink)` /
+  `IconButton::tint` paint a button in an app's own colours.
+- A field `Select`'s listbox is at least as wide as its trigger (`.menu_width(w)` sets it);
+  `Popover` and `HoverCard` take `.max_width` / `.min_width`.
+- `HoverCard::hover(&s.card, |s: &mut App| &mut s.card)` opens the card after the pointer
+  rests on its trigger and keeps it open while the pointer is over the trigger or the card
+  (`.delays(open, close)`, 700 / 300 ms by default).
 
 `Button::new(label).wrap()` lets a long label wrap onto centred lines when the built button's
 width is bounded (`.build(&k).max_w(240.0)`); the button grows taller from its control height.

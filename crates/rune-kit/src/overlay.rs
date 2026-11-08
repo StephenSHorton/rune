@@ -152,6 +152,7 @@ pub struct Popover {
     placement: Placement,
     gutter: f32,
     padding: f32,
+    width: (f32, f32),
     close: Acts,
     dismiss: Option<El>,
     caret: Option<String>,
@@ -170,6 +171,7 @@ impl Popover {
             placement: Placement::Bottom,
             gutter: 4.0,
             padding: 12.0,
+            width: (200.0, 320.0),
             close: Acts::default(),
             dismiss: None,
             caret: None,
@@ -191,6 +193,17 @@ impl Popover {
     /// search field over a divider.
     pub fn padding(mut self, p: f32) -> Self {
         self.padding = p;
+        self
+    }
+    /// The widest the surface grows, 320 by default: a wider body (a form, a picker grid)
+    /// raises it. Text in the body wraps at it.
+    pub fn max_width(mut self, w: f32) -> Self {
+        self.width.1 = w;
+        self
+    }
+    /// The narrowest the surface is, 200 by default.
+    pub fn min_width(mut self, w: f32) -> Self {
+        self.width.0 = w;
         self
     }
     pub fn title(mut self, t: impl Into<String>) -> Self {
@@ -240,7 +253,7 @@ impl Popover {
         }
         let mut content = col().key(format!("{}-content", self.key)).role("dialog")
             .description(self.description.clone().unwrap_or_default())
-            .focus_return(&anchor_key).min_w(200.0).max_w(320.0);
+            .focus_return(&anchor_key).min_w(self.width.0).max_w(self.width.1.max(self.width.0));
         if let Some(l) = &self.label {
             content = content.label(l.clone());
         }
@@ -530,18 +543,64 @@ impl Tooltip {
     }
 }
 
+/// Where the pointer is for a [`HoverCard`] the kit opens and closes: over its trigger, over
+/// the card, or neither. The app keeps one per card in its state and hands it to
+/// [`HoverCard::hover`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HoverCardState {
+    over_trigger: bool,
+    over_card: bool,
+}
+
+impl HoverCardState {
+    /// The card shows: the pointer rested on the trigger for the open delay, and hasn't yet been
+    /// off both the trigger and the card for the close delay.
+    pub fn is_open(&self) -> bool {
+        self.over_trigger || self.over_card
+    }
+    /// Close it now (a press on the trigger that navigates away, Escape).
+    pub fn close(&mut self) {
+        *self = HoverCardState::default();
+    }
+}
+
+/// Wires a delayed hover report onto the trigger (`false`) or the card (`true`).
+type Wire = std::rc::Rc<dyn Fn(El, std::time::Duration, std::time::Duration, bool) -> El>;
+
 /// A hover card: rich preview content anchored under its trigger.
+///
+/// With [`Self::hover`] the kit opens it once the pointer rests on the trigger (700 ms) and
+/// closes it once the pointer has left both the trigger and the card (300 ms), so the pointer
+/// can cross the gap into the card; [`Self::delays`] tunes both. Without it, [`Self::open`]
+/// shows it whenever the app says.
+///
+/// ```ignore
+/// HoverCard::new("author").trigger(name).hover(&s.author_card, |s: &mut App| &mut s.author_card)
+///     .child(profile).build(&k, &mut layer)
+/// ```
 pub struct HoverCard {
     key: String,
     trigger: Option<El>,
     body: Vec<El>,
     open: bool,
     placement: Placement,
+    width: (f32, f32),
+    delays: (std::time::Duration, std::time::Duration),
+    wire: Option<Wire>,
 }
 
 impl HoverCard {
     pub fn new(key: impl Into<String>) -> HoverCard {
-        HoverCard { key: key.into(), trigger: None, body: Vec::new(), open: false, placement: Placement::Bottom }
+        HoverCard {
+            key: key.into(),
+            trigger: None,
+            body: Vec::new(),
+            open: false,
+            placement: Placement::Bottom,
+            width: (200.0, 320.0),
+            delays: (std::time::Duration::from_millis(700), std::time::Duration::from_millis(300)),
+            wire: None,
+        }
     }
     pub fn trigger(mut self, t: El) -> Self {
         self.trigger = Some(t);
@@ -559,18 +618,60 @@ impl HoverCard {
         self.placement = p;
         self
     }
-    /// Open on hover: the trigger reports entering (the app closes it on leaving or elsewhere).
+    /// The widest the card grows, 320 by default.
+    pub fn max_width(mut self, w: f32) -> Self {
+        self.width.1 = w;
+        self
+    }
+    /// The narrowest the card is, 200 by default.
+    pub fn min_width(mut self, w: f32) -> Self {
+        self.width.0 = w;
+        self
+    }
+    /// Let the kit open and close the card on hover, keeping where the pointer is in `state`
+    /// (reached in the app's state through `access`). It opens after the pointer rests on the
+    /// trigger and stays open while the pointer is over the trigger or the card.
+    pub fn hover<S: 'static>(
+        mut self,
+        state: &HoverCardState,
+        access: impl for<'a> Fn(&'a mut S) -> &'a mut HoverCardState + 'static,
+    ) -> Self {
+        self.open = state.is_open();
+        let access = std::rc::Rc::new(access);
+        self.wire = Some(std::rc::Rc::new(move |e: El, enter, leave, card: bool| {
+            let access = access.clone();
+            e.hover_delays(enter, leave).on_hover_change(move |s: &mut S, inside, _| {
+                let st = access(s);
+                if card { st.over_card = inside } else { st.over_trigger = inside }
+            })
+        }));
+        self
+    }
+    /// How long the pointer rests on the trigger before the card opens, and how long it stays
+    /// off the trigger and card before it closes ([`Self::hover`]): 700 ms and 300 ms by default.
+    pub fn delays(mut self, open: std::time::Duration, close: std::time::Duration) -> Self {
+        self.delays = (open, close);
+        self
+    }
+    /// Open on hover: with [`Self::hover`] the kit times it; otherwise the app does.
     pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let anchor_key = format!("{}-trigger", self.key);
-        let trigger = row().key(anchor_key.clone()).w_full().children(self.trigger);
+        let mut trigger = row().key(anchor_key.clone()).w_full().children(self.trigger);
+        let (open_after, close_after) = self.delays;
+        if let Some(wire) = &self.wire {
+            trigger = wire(trigger, open_after, close_after, false);
+        }
         if !self.open {
             return trigger;
         }
-        let content = col()
+        let mut content = col()
             .key(format!("{}-card", self.key))
-            .min_w(200.0)
-            .max_w(320.0)
+            .min_w(self.width.0)
+            .max_w(self.width.1.max(self.width.0))
             .child(col().padding(4.0).children(self.body));
+        if let Some(wire) = &self.wire {
+            content = wire(content, std::time::Duration::ZERO, close_after, true);
+        }
         layer.push(anchor_with(k.motion.overlay, raised(k, content, k.radius.lg), &anchor_key, self.placement, 4.0));
         trigger
     }

@@ -1,5 +1,5 @@
-//! Spinner, Loader, Progress and ProgressCircle (`@opencode/ui` components/spinner,
-//! feedback/loader, components/progress, feedback/progress-circle).
+//! Spinner, Loader, Progress, ProgressCircle and Skeleton (`@opencode/ui` components/spinner,
+//! feedback/loader, components/progress, feedback/progress-circle; shadcn `ui/skeleton`).
 //!
 //! Renderer-owned loops cool through presence on removal; the spinner's run on the wall clock,
 //! so every spinner on screen keeps one phase.
@@ -117,17 +117,41 @@ fn report(e: El, value: Option<f32>) -> El {
     }
 }
 
-/// A linear progress bar with an optional label and value label (`Progress`).
+/// A linear progress bar with an optional label and value label (`Progress`). Without a value
+/// it is indeterminate: a quarter-width segment sweeps across the track, wrapping from the left
+/// (held mid-track under reduced motion).
 pub struct Progress {
     label: Option<String>,
     value: Option<f32>,
     show_value: bool,
+    height: f32,
+    color: Option<Color>,
+    track: Option<Color>,
 }
 
 impl Progress {
     /// `value` in 0..=1; `None` is indeterminate.
     pub fn new(value: Option<f32>) -> Progress {
-        Progress { label: None, value, show_value: false }
+        Progress { label: None, value, show_value: false, height: 8.0, color: None, track: None }
+    }
+    /// An indeterminate bar: work under way with no measure of how far along it is.
+    pub fn indeterminate() -> Progress {
+        Progress::new(None)
+    }
+    /// The bar's thickness in points, 8 by default; a thin 2–4 point bar drops the track's border.
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = h.max(1.0);
+        self
+    }
+    /// The filled part's colour, `border_active` by default (a status colour, an accent).
+    pub fn color(mut self, c: Color) -> Self {
+        self.color = Some(c);
+        self
+    }
+    /// The track's colour behind the fill, `surface_base` by default.
+    pub fn track(mut self, c: Color) -> Self {
+        self.track = Some(c);
+        self
     }
     pub fn label(mut self, l: impl Into<String>) -> Self {
         self.label = Some(l.into());
@@ -158,18 +182,85 @@ impl Progress {
         let mut track = row()
             .key("track")
             .w_full()
-            .h(8.0)
+            .h(self.height)
             .radius(999.0)
-            .fill(c.surface_base)
-            .border(1.0, c.border_weak)
+            .fill(self.track.unwrap_or(c.surface_base))
             .clip_soft(0.0);
-        let fill = el().key("fill").h_full().radius(999.0).fill(c.border_active);
+        if self.height > 4.0 {
+            track = track.border(1.0, c.border_weak);
+        }
+        let fill = el().key("fill").h_full().radius(999.0).fill(self.color.unwrap_or(c.border_active));
         track = track.child(match self.value {
             Some(v) => fill.w_frac(v.clamp(0.0, 1.0)),
             // A quarter-width segment crosses the whole track, then wraps from the left.
             None => fill.w_frac(0.25).looping(rune_motion::LoopSpec::slide(1.4, [-1.0, 0.0], [4.0, 0.0])),
         });
         root.child(track.key("track").a11y_hidden())
+    }
+}
+
+/// A placeholder for content still loading (`Skeleton`): a muted block whose opacity pulses
+/// between full and half every 1.6 s, holding full under reduced motion. Full width and 12
+/// points tall by default; size it to the text or picture it stands in for. Assistive
+/// technology skips it unless it is given a [`Self::label`].
+///
+/// `col().gap(8.0).child(Skeleton::new().width(120.0).build(&k)).child(Skeleton::new().build(&k))`
+pub struct Skeleton {
+    width: Option<f32>,
+    height: f32,
+    radius: Option<f32>,
+    label: Option<String>,
+}
+
+impl Skeleton {
+    pub fn new() -> Skeleton {
+        Skeleton { width: None, height: 12.0, radius: None, label: None }
+    }
+    /// A circle `d` points across (an avatar's place).
+    pub fn circle(d: f32) -> Skeleton {
+        Skeleton { width: Some(d), height: d, radius: Some(d / 2.0), label: None }
+    }
+    /// The width in points; the container's full width by default.
+    pub fn width(mut self, w: f32) -> Self {
+        self.width = Some(w);
+        self
+    }
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = h;
+        self
+    }
+    /// The corner radius, the kit's small radius by default.
+    pub fn radius(mut self, r: f32) -> Self {
+        self.radius = Some(r);
+        self
+    }
+    /// Report it to assistive technology as a busy indicator named `l` ("Loading messages").
+    /// Give one to the first block of a group, not every block.
+    pub fn label(mut self, l: impl Into<String>) -> Self {
+        self.label = Some(l.into());
+        self
+    }
+    pub fn build(self, k: &Kit) -> El {
+        // Reduced motion holds the loop's first pose, `low`: full opacity here.
+        let e = el()
+            .h(self.height)
+            .radius(self.radius.unwrap_or(k.radius.sm))
+            .fill(k.c.layer_03)
+            .looping(rune_motion::LoopSpec::opacity(1.6, 0.0, 1.0, 0.5));
+        let e = match self.width {
+            Some(w) => e.w(w),
+            None => e.w_full(),
+        };
+        match self.label {
+            Some(l) => e.role("progressbar").label(l),
+            None => e.a11y_hidden(),
+        }
+    }
+}
+
+impl Default for Skeleton {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

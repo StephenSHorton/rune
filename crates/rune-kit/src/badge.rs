@@ -10,6 +10,15 @@ pub enum BadgeVariant {
     Neutral,
     Accent,
     Subtle,
+    /// A state badge in the kit's [`StateColors`](crate::StateColors): the role's soft fill,
+    /// its text colour and its border ("Done", "Passing").
+    Success,
+    /// See [`BadgeVariant::Success`] ("Stale", "Waiting").
+    Warning,
+    /// See [`BadgeVariant::Success`] ("Failed", "Blocked").
+    Danger,
+    /// See [`BadgeVariant::Success`] ("New", "Beta").
+    Info,
 }
 
 pub struct Badge {
@@ -47,6 +56,10 @@ impl Badge {
             }
             BadgeVariant::Accent => (c.bg_accent, c.text_contrast, None),
             BadgeVariant::Subtle => (c.layer_03, c.text_muted, None),
+            BadgeVariant::Success => (c.success.bg, c.success.fg, Some(c.success.border)),
+            BadgeVariant::Warning => (c.warning.bg, c.warning.fg, Some(c.warning.border)),
+            BadgeVariant::Danger => (c.danger.bg, c.danger.fg, Some(c.danger.border)),
+            BadgeVariant::Info => (c.info.bg, c.info.fg, Some(c.info.border)),
         };
         let (h, px, radius, font) = if self.standard {
             (18.0, 6.0, k.radius.xs, k.ty.text_small_medium)
