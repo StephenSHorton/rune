@@ -171,3 +171,16 @@ fn the_hue_track_shows_the_hues() {
     assert!(all.iter().any(|e| e.parent == Some(hue) && e.key.as_deref() == Some("track")));
     assert!(!all.iter().any(|e| e.parent == Some(hue) && e.key.as_deref() == Some("range")), "no accent fill over it");
 }
+
+#[test]
+fn a_swatch_after_typing_commits_the_typed_hex_on_blur_then_the_swatch() {
+    let mut rt = app();
+    press(&mut rt, "tag-hex");
+    typed(&mut rt, "#abc");
+    press(&mut rt, "swatch3");
+    rt.frame(0.0);
+    let picked = rt.state.color.unwrap();
+    // As on the web, the field's blur commits what was typed before the swatch's press lands.
+    let commits: Vec<String> = rt.state.commits.iter().map(|&c| hex(c)).collect();
+    assert_eq!(commits, vec!["#aabbcc".to_owned(), hex(picked)]);
+}
