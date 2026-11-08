@@ -21,16 +21,37 @@ pub enum BadgeVariant {
     Info,
 }
 
+/// A small label in a tinted box: `Badge::new("Done").variant(BadgeVariant::Success).build(&k)`.
+///
+/// Assistive technology reads it as a status, announcing a change to its text politely, unless
+/// [`Self::plain`] makes it plain text.
 pub struct Badge {
     label: String,
     variant: BadgeVariant,
     standard: bool,
     high_contrast: bool,
+    pill: bool,
+    height: Option<f32>,
+    padding: Option<f32>,
+    border: Option<f32>,
+    max_width: Option<f32>,
+    plain: bool,
 }
 
 impl Badge {
     pub fn new(label: impl Into<String>) -> Badge {
-        Badge { label: label.into(), variant: BadgeVariant::Neutral, standard: false, high_contrast: false }
+        Badge {
+            label: label.into(),
+            variant: BadgeVariant::Neutral,
+            standard: false,
+            high_contrast: false,
+            pill: false,
+            height: None,
+            padding: None,
+            border: None,
+            max_width: None,
+            plain: false,
+        }
     }
     pub fn variant(mut self, v: BadgeVariant) -> Self {
         self.variant = v;
@@ -44,6 +65,40 @@ impl Badge {
     /// A stronger border (`data-high-contrast`).
     pub fn high_contrast(mut self) -> Self {
         self.high_contrast = true;
+        self
+    }
+    /// Fully rounded ends (a chip), in place of the small corner radius.
+    pub fn pill(mut self) -> Self {
+        self.pill = true;
+        self
+    }
+    /// The height in points, in place of 16 (18 for [`Self::standard`]).
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = Some(h.max(1.0));
+        self
+    }
+    /// The padding left and right of the text in points, in place of 4 (6 for
+    /// [`Self::standard`]).
+    pub fn padding(mut self, px: f32) -> Self {
+        self.padding = Some(px.max(0.0));
+        self
+    }
+    /// The border's width in points, in place of 0.5; 0 drops it. Variants with no border
+    /// (`Accent`, `Subtle`) stay without one.
+    pub fn border_width(mut self, w: f32) -> Self {
+        self.border = Some(w.max(0.0));
+        self
+    }
+    /// At most `w` points wide: a longer text is cut short with an ellipsis, and the whole of
+    /// it shows as a tooltip.
+    pub fn max_width(mut self, w: f32) -> Self {
+        self.max_width = Some(w.max(0.0));
+        self
+    }
+    /// Read as plain text rather than a status: for chips in a list or card, where every
+    /// change announced would be noise.
+    pub fn plain(mut self) -> Self {
+        self.plain = true;
         self
     }
 
@@ -66,12 +121,24 @@ impl Badge {
         } else {
             (16.0, 4.0, 2.0, TextStyle { line_height: 11.0, ..k.ty.small_medium })
         };
-        let e = row().role("status").label(self.label.clone()).center().gap(4.0).h(h).px(px).radius(radius).fill(fill);
-        // A status: assistive technology announces a change to its label, politely.
-        let e = e.child(text(self.label).font(font).color(ink).a11y_hidden());
-        match border {
-            Some(b) => e.border(0.5, b),
-            None => e,
+        let h = self.height.unwrap_or(h);
+        let px = self.padding.unwrap_or(px);
+        let radius = if self.pill { h / 2.0 } else { radius };
+        let mut e = row().center().gap(4.0).h(h).px(px).radius(radius).fill(fill);
+        let mut label = text(self.label.clone()).font(font).color(ink);
+        if let Some(w) = self.max_width {
+            e = e.max_w(w).shrink();
+            label = label.truncate().shrink().help_when_truncated(self.label.clone());
+        }
+        e = if self.plain {
+            e.child(label)
+        } else {
+            // A status: assistive technology announces a change to its label, politely.
+            e.role("status").label(self.label).child(label.a11y_hidden())
+        };
+        match (border, self.border.unwrap_or(0.5)) {
+            (Some(b), w) if w > 0.0 => e.border(w, b),
+            _ => e,
         }
     }
 }
