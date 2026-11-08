@@ -121,6 +121,24 @@ fn skin(k: &Kit, v: ButtonVariant) -> Skin {
     }
 }
 
+/// A solid button in an app's own colours ([`Button::tint`]): `fill` behind, `ink` on the
+/// label and icon. Hover and press lay the ink over the fill, so they read on a light fill or a
+/// dark one; an opaque fill takes the contrast button's shadows, a clear one none.
+fn tinted(k: &Kit, fill: Color, ink: Color) -> Skin {
+    let solid = fill.a >= 0.999;
+    Skin {
+        fill,
+        sheen: None,
+        shadows: if solid { k.elevation.button_contrast.clone() } else { Vec::new() },
+        ring: None,
+        hover: k.on(ink.alpha(0.12), fill),
+        pressed: k.on(ink.alpha(0.2), fill),
+        ink,
+        icon: ink,
+        disabled_opacity: 0.4,
+    }
+}
+
 /// Paints `skin` on `e` for `state`. Rest leaves hover/press to the runtime.
 fn paint(k: &Kit, mut e: El, s: Skin, state: State, interactive: bool) -> El {
     e = e.focusable(interactive && state != State::Disabled).focus_ring(2.0, 2.5, k.c.border_focus);
@@ -199,6 +217,7 @@ pub struct Button {
     label: String,
     look: Label,
     variant: ButtonVariant,
+    tint: Option<(Color, Color)>,
     size: Size,
     icon: Option<&'static Icon>,
     state: State,
@@ -227,6 +246,7 @@ impl Button {
             label: label.into(),
             look: Label::Text,
             variant: ButtonVariant::Neutral,
+            tint: None,
             size: Size::Control(ControlSize::Regular),
             icon: None,
             state: State::Rest,
@@ -238,6 +258,14 @@ impl Button {
     }
     pub fn variant(mut self, v: ButtonVariant) -> Self {
         self.variant = v;
+        self
+    }
+    /// Paint the button in an app's own colours instead of the variant's: `fill` behind,
+    /// `ink` on the label and icon, as a coloured action ("Join" in green, "Delete" in red).
+    /// Hover and press lay the ink over the fill; disabled fades to 40%.
+    /// `Button::new("Join").tint(k.c.success.icon, k.c.white)`.
+    pub fn tint(mut self, fill: Color, ink: Color) -> Self {
+        self.tint = Some((fill, ink));
         self
     }
     /// The button's size, as AppKit's: Regular (24 points tall) unless set.
@@ -325,8 +353,11 @@ impl Button {
                 (h, px, radius, icon_size, if c == ControlSize::Mini { 4.0 } else { 6.0 }, Some(c))
             }
         };
-        let mut s = skin(k, self.variant);
-        let ghostly =
+        let mut s = match self.tint {
+            Some((fill, ink)) => tinted(k, fill, ink),
+            None => skin(k, self.variant),
+        };
+        let ghostly = self.tint.is_none() &&
             matches!(self.variant, ButtonVariant::Ghost | ButtonVariant::GhostMuted | ButtonVariant::GhostFaint);
         if self.expanded == Some(true) && ghostly && self.state != State::Disabled {
             s.fill = s.pressed;
@@ -335,7 +366,7 @@ impl Button {
             }
         }
         let mut font = k.ty.ui_medium;
-        if self.variant == ButtonVariant::GhostMuted {
+        if self.variant == ButtonVariant::GhostMuted && self.tint.is_none() {
             font = k.ty.ui;
         }
         // AppKit sets small buttons in 11 points and mini ones in 9.
@@ -347,7 +378,7 @@ impl Button {
         }
         let (ink, icon_c) = (s.ink, s.icon);
         let disabled_alpha = s.disabled_opacity;
-        let interactive = self.variant != ButtonVariant::Loading;
+        let interactive = self.variant != ButtonVariant::Loading || self.tint.is_some();
         let enabled = self.state != State::Disabled && interactive;
         let tip = compose_help(self.help.as_deref(), Some(&self.label), self.shortcut.as_deref());
         let mut e = row().role("button").label(self.label.clone()).h(h).px(px).gap(gap).center().radius(radius);
@@ -383,12 +414,17 @@ pub enum IconButtonVariant {
     Submit,
     Ghost,
     GhostMuted,
+    /// A destructive action: the neutral button with the danger role's icon colour.
+    Danger,
+    /// A positive action: the neutral button with the success role's icon colour.
+    Success,
 }
 
 /// A square icon-only button: `IconButton::new(&icons::PLUS).build(&kit)`.
 pub struct IconButton {
     icon: &'static Icon,
     variant: IconButtonVariant,
+    tint: Option<(Color, Color)>,
     size: Size,
     state: State,
     expanded: Option<bool>,
@@ -403,6 +439,7 @@ impl IconButton {
         IconButton {
             icon: i,
             variant: IconButtonVariant::Neutral,
+            tint: None,
             size: Size::Control(ControlSize::Regular),
             state: State::Rest,
             expanded: None,
@@ -414,6 +451,12 @@ impl IconButton {
     }
     pub fn variant(mut self, v: IconButtonVariant) -> Self {
         self.variant = v;
+        self
+    }
+    /// Paint the button in an app's own colours instead of the variant's: `fill` behind, `ink`
+    /// on the icon (a red hang-up, a green answer). See [`Button::tint`].
+    pub fn tint(mut self, fill: Color, ink: Color) -> Self {
+        self.tint = Some((fill, ink));
         self
     }
     /// A square as tall as a push button of this size: Regular (24 points) unless set.
@@ -488,7 +531,18 @@ impl IconButton {
             ControlSize::ExtraLarge => (36.0, k.radius.lg, 18.0),
         };
         let mut s = match self.variant {
+            _ if let Some((fill, ink)) = self.tint => tinted(k, fill, ink),
             IconButtonVariant::Neutral => skin(k, ButtonVariant::Neutral),
+            IconButtonVariant::Danger => {
+                let mut s = skin(k, ButtonVariant::Danger);
+                s.icon = k.c.danger.fg;
+                s
+            }
+            IconButtonVariant::Success => {
+                let mut s = skin(k, ButtonVariant::Neutral);
+                (s.ink, s.icon) = (k.c.success.fg, k.c.success.fg);
+                s
+            }
             IconButtonVariant::Contrast | IconButtonVariant::Submit => {
                 let mut s = skin(k, ButtonVariant::Submit);
                 s.icon = k.c.submit_icon;
@@ -501,10 +555,13 @@ impl IconButton {
                 s
             }
         };
-        if self.state == State::Pressed && self.variant == IconButtonVariant::GhostMuted {
+        if self.state == State::Pressed && self.variant == IconButtonVariant::GhostMuted && self.tint.is_none() {
             s.icon = k.c.icon_base;
         }
-        if self.expanded == Some(true) && matches!(self.variant, IconButtonVariant::Ghost | IconButtonVariant::GhostMuted) {
+        if self.expanded == Some(true)
+            && self.tint.is_none()
+            && matches!(self.variant, IconButtonVariant::Ghost | IconButtonVariant::GhostMuted)
+        {
             s.fill = s.pressed;
             s.icon = if self.variant == IconButtonVariant::GhostMuted { k.c.icon_base } else { s.icon };
         }

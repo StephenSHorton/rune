@@ -28,6 +28,7 @@ pub struct Select {
     options: Vec<(Option<String>, String)>,
     details: Vec<Option<String>>,
     width: f32,
+    menu_width: Option<f32>,
     current: Option<String>,
     placeholder: String,
     name: Option<String>,
@@ -49,6 +50,7 @@ impl Select {
             options: options.iter().map(|o| (None, o.as_ref().to_owned())).collect(),
             details: Vec::new(),
             width: 280.0,
+            menu_width: None,
             current: None,
             placeholder: String::new(),
             name: None,
@@ -77,6 +79,13 @@ impl Select {
     /// The field trigger's width in points (default 280).
     pub fn width(mut self, w: f32) -> Self {
         self.width = w;
+        self
+    }
+    /// The listbox's width in points. By default it is at least as wide as a field trigger
+    /// ([`SelectAppearance::Field`], [`Self::width`]) and at least 160 under an inline one,
+    /// growing with its options up to 368 (or the trigger's width, when wider).
+    pub fn menu_width(mut self, w: f32) -> Self {
+        self.menu_width = Some(w);
         self
     }
     pub fn current(mut self, c: Option<&str>) -> Self {
@@ -213,6 +222,11 @@ impl Select {
             list = list.child(item);
             after_item = true;
         }
+        let (min_w, max_w) = match (self.menu_width, self.appearance) {
+            (Some(w), _) => (w, w),
+            (None, SelectAppearance::Field) => (self.width, self.width.max(368.0)),
+            (None, SelectAppearance::Inline) => (160.0, 368.0),
+        };
         let mut content = shadows(
             k,
             col()
@@ -220,8 +234,8 @@ impl Select {
                 // Modal, so a reader hears a dialog: it's named as the select is.
                 .label(self.name.clone().unwrap_or_else(|| self.placeholder.clone()))
                 .focus_return(&anchor_key)
-                .min_w(160.0)
-                .max_w(368.0)
+                .min_w(min_w)
+                .max_w(max_w)
                 .radius(6.0)
                 .fill(c.layer_01)
                 .child(col().key("listbox").role("listbox").label(self.name.clone().unwrap_or_else(|| self.placeholder.clone()))

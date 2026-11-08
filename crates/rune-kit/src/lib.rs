@@ -112,6 +112,7 @@ pub use menu::context_menu;
 #[cfg(feature = "markdown")]
 pub use notes::Note;
 pub use overlay::HoverCard;
+pub use overlay::HoverCardState;
 pub use overlay::Placement;
 pub use overlay::Popover;
 pub use overlay::Tooltip;
