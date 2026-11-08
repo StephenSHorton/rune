@@ -165,6 +165,7 @@ pub use image::ImageId;
 pub use input::canvas_input::GesturePhase;
 pub use input::canvas_input::MagnifyEvent;
 pub use input::canvas_input::PointerButton;
+pub use input::canvas_input::PointerKind;
 pub use input::canvas_input::RotateEvent;
 pub use input::canvas_input::WheelEvent;
 pub use input::chord::Chord;

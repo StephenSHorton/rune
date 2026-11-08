@@ -82,9 +82,15 @@ pub struct Drag {
     pub(crate) window: [f32; 2],
     /// The pointer in desktop pixels, when a native window hosts the view.
     pub(crate) screen: Option<(i32, i32)>,
+    /// A mouse or a finger (`Drag::pointer_kind`).
+    pub(crate) kind: crate::PointerKind,
 }
 
 impl Drag {
+    /// Whether a mouse or a finger drives this drag, the same on every phase.
+    pub fn pointer_kind(&self) -> crate::PointerKind {
+        self.kind
+    }
     /// On `Phase::Up`: the gesture ended without a drop (Escape, the window lost focus, or the
     /// pointer was taken away). Put back whatever the drag moved.
     pub fn cancelled(&self) -> bool {
@@ -142,6 +148,8 @@ pub struct PointerEvent {
     pub y: f32,
     pub window_x: f32,
     pub window_y: f32,
+    /// A mouse or a finger.
+    pub kind: crate::PointerKind,
 }
 
 impl PointerEvent {

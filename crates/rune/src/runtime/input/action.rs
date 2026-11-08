@@ -24,7 +24,7 @@ pub(super) enum Action {
     DrawnLayout(String, [f32; 4], bool),
     /// `El::on_visible`: the element came on screen or left it.
     Visible(String, bool),
-    Press(String, crate::PointerButton),
+    Press(String, crate::PointerButton, crate::PointerKind),
     DoublePress(String),
     Link(String, usize),
     /// `El::on_link_secondary`: the text, its link and the press.
@@ -137,7 +137,7 @@ pub(super) fn live_only_handler(action: &Action) -> Option<&'static str> {
 #[cfg(debug_assertions)]
 pub(super) fn action_path(action: &Action) -> Option<&str> {
     match action {
-        Action::PointerMove(path, _) | Action::DrawnLayout(path, ..) | Action::Layout(path, _) | Action::Hover(path) | Action::HoverChange(path, _) | Action::SelectionChange(path, _) | Action::Press(path, _) | Action::DoublePress(path)
+        Action::PointerMove(path, _) | Action::DrawnLayout(path, ..) | Action::Layout(path, _) | Action::Hover(path) | Action::HoverChange(path, _) | Action::SelectionChange(path, _) | Action::Press(path, ..) | Action::DoublePress(path)
         | Action::Link(path, _) | Action::LinkSecondary(path, ..) | Action::SecondaryPress(path, _) | Action::Drag(path, ..) | Action::DragRepeat(path, ..) | Action::DragStart(path)
         | Action::DragEnd(path, _) | Action::Visible(path, _) => Some(path),
         Action::Wheel(_, chain, _) | Action::Gesture(chain, _) => chain.first().map(String::as_str),
@@ -392,10 +392,11 @@ impl<S: 'static> Runtime<S> {
                 one.select_from_change = one.select.is_some();
                 true
             }
-            Action::Press(path, button) => {
+            Action::Press(path, button, kind) => {
                 let Some(f) = self.node(&path).and_then(|n| n.handlers.on_press.clone()) else { return false };
                 log_event!(self, "press {path}");
                 one.button = button;
+                one.pointer_kind = kind;
                 f(states!(self), &mut one);
                 true
             }
@@ -420,6 +421,7 @@ impl<S: 'static> Runtime<S> {
                     one.instant = true;
                 }
                 one.button = button;
+                one.pointer_kind = d.kind;
                 one.drag_repeat = repeat;
                 d.data = if d.phase == Phase::Down { 0.0 } else { self.drag_data };
                 f(states!(self), &mut d, &mut one);
