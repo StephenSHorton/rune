@@ -273,7 +273,7 @@ fn popup_list_at_caret(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
     let people = ["Ana Silva", "Andrei Popescu", "Anika Rao", "Brook Lane"];
     let q = s.edits[7].text.rsplit('@').next().unwrap_or_default().to_lowercase();
     let items: Vec<_> = people.iter().filter(|p| p.to_lowercase().starts_with(&q)).map(|p| PopupItem::new(*p, *p)).collect();
-    PopupList::new("popup-list", "composer")
+    PopupList::<G>::new("popup-list", "composer")
         .at_caret("composer")
         .placement(Placement::BottomStart)
         .open(is_open(s, "popup-list"))
