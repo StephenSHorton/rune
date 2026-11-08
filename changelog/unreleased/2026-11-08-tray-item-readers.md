@@ -1,0 +1,1 @@
+- `TrayItem::label`, `is_enabled` and `picked` are public, and `TrayItem::id` is new, so an app can test a tray menu it built item by item.

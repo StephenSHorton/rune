@@ -62,19 +62,28 @@ impl TrayItem {
     pub fn is_checked(&self) -> Option<bool> {
         match self { Self::Check { checked, .. } => Some(*checked), _ => None }
     }
-    /// The label, for items that show one.
-    #[cfg_attr(not(any(all(target_os = "linux", feature = "dbus"), target_os = "windows")), allow(dead_code))]
-    pub(crate) fn label(&self) -> Option<&str> {
+    /// The id a pick of this item sends, enabled or not; `None` for a separator.
+    pub fn id(&self) -> Option<&str> {
+        match self { Self::Action { id, .. } | Self::Check { id, .. } => Some(id), Self::Separator => None }
+    }
+    /// The label, for items that show one; `None` for a separator.
+    pub fn label(&self) -> Option<&str> {
         match self { Self::Action { label, .. } | Self::Check { label, .. } => Some(label), Self::Separator => None }
     }
-    /// Whether the item can be picked.
-    #[cfg_attr(not(any(all(target_os = "linux", feature = "dbus"), target_os = "windows")), allow(dead_code))]
-    pub(crate) fn is_enabled(&self) -> bool {
+    /// Whether the item can be picked; false for a separator.
+    pub fn is_enabled(&self) -> bool {
         match self { Self::Action { enabled, .. } | Self::Check { enabled, .. } => *enabled, Self::Separator => false }
     }
-    /// The id a pick of this item sends, when it can be picked.
-    #[cfg_attr(not(any(all(target_os = "linux", feature = "dbus"), target_os = "windows")), allow(dead_code))]
-    pub(crate) fn picked(&self) -> Option<&str> {
+    /// The id a pick of this item sends, when it can be picked: `None` for a disabled item or
+    /// a separator. An app can test a menu it built with these:
+    ///
+    /// ```
+    /// use rune::TrayItem;
+    /// let quit = TrayItem::action("quit", "Quit").enabled(false);
+    /// assert_eq!((quit.id(), quit.label(), quit.is_enabled(), quit.picked()), (Some("quit"), Some("Quit"), false, None));
+    /// assert_eq!(TrayItem::check("login", "Open at Login", true).picked(), Some("login"));
+    /// ```
+    pub fn picked(&self) -> Option<&str> {
         match self {
             Self::Action { id, enabled: true, .. } | Self::Check { id, enabled: true, .. } => Some(id),
             _ => None,
