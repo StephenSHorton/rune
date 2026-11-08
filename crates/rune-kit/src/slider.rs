@@ -4,7 +4,7 @@
 use std::any::Any;
 use std::rc::Rc;
 
-use rune::{Drag, El, Phase, Tx, el};
+use rune::{Color, Drag, El, Phase, Tx, el};
 
 use crate::{Kit, State, shadows};
 
@@ -82,6 +82,7 @@ pub struct Slider {
     wire: Option<Wire>,
     change: Option<Erased>,
     commit: Option<Erased>,
+    gradient: Option<Vec<(f32, Color)>>,
 }
 
 impl Slider {
@@ -97,6 +98,7 @@ impl Slider {
             wire: None,
             change: None,
             commit: None,
+            gradient: None,
         }
     }
     /// The range, `min` at the left end and `max` at the right (0..=1 by default).
@@ -124,6 +126,13 @@ impl Slider {
     /// reads as a percentage and any other as its number.
     pub fn value_text(mut self, f: impl Fn(f32) -> String + 'static) -> Self {
         self.value_text = Some(Box::new(f));
+        self
+    }
+    /// Paint the track left to right with these `(position, colour)` stops (positions in
+    /// 0..=1, at most 8), in place of the plain track and the accent fill up to the knob: a hue
+    /// strip, an opacity ramp.
+    pub fn track_gradient(mut self, stops: &[(f32, Color)]) -> Self {
+        self.gradient = Some(stops.to_vec());
         self
     }
     pub fn state(mut self, s: State) -> Self {
@@ -168,23 +177,19 @@ impl Slider {
             .range_step(f64::from(g.key_step()))
             .a11y_value(text)
             .size(w, h)
-            .disabled(disabled)
-            .child(
-                el().key("track")
-                    .size(w, bar)
-                    .absolute(0.0, (h - bar) / 2.0)
-                    .radius(bar / 2.0)
-                    .fill(c.layer_04)
-                    .a11y_hidden(),
-            )
-            .child(
+            .disabled(disabled);
+        let track = el().key("track").size(w, bar).absolute(0.0, (h - bar) / 2.0).radius(bar / 2.0).fill(c.layer_04);
+        e = match &self.gradient {
+            Some(stops) => e.child(track.linear_gradient(std::f32::consts::FRAC_PI_2, stops).a11y_hidden()),
+            None => e.child(track.a11y_hidden()).child(
                 el().key("range")
                     .size(x, bar)
                     .absolute(0.0, (h - bar) / 2.0)
                     .radius(bar / 2.0)
                     .fill(c.bg_accent)
                     .a11y_hidden(),
-            );
+            ),
+        };
         let mut thumb = el()
             .key("knob")
             .size(knob, knob)

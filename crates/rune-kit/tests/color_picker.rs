@@ -1,6 +1,13 @@
 //! `ColorPicker`: swatches pick and fill the hex field, typing a hex reports it once it parses,
 //! and the hue slider turns the colour.
 use rune::{Color, Cx, El, Env, Key, KeyEvent, Mods, Runtime, col};
+
+fn typed(rt: &mut Runtime<App>, chars: &str) {
+    for ch in chars.chars() {
+        rt.key(KeyEvent { key: Key::Text(ch.to_string()), mods: Mods::default() });
+        rt.frame(0.0);
+    }
+}
 use rune_kit::{ColorPicker, ColorPickerState, ColorSwatch, Kit};
 
 #[derive(Default)]
@@ -8,6 +15,9 @@ struct App {
     color: Option<Color>,
     picker: ColorPickerState,
     changes: usize,
+    commits: Vec<Color>,
+    defaults: usize,
+    hidden: bool,
 }
 
 fn view(s: &App, cx: &mut Cx<App>) -> El {
@@ -19,8 +29,18 @@ fn view(s: &App, cx: &mut Cx<App>) -> El {
             s.color = Some(c);
             s.changes += 1;
         })
+        .on_commit(|s: &mut App, c, _| s.commits.push(c))
         .build(&k);
-    col().w_full().h_full().padding(10.0).child(picker).child(ColorSwatch::new(Color::WHITE).build(&k).key("chip"))
+    let ok = rune::el()
+        .key("ok")
+        .size(20.0, 20.0)
+        .focusable(true)
+        .role("button")
+        .default_button()
+        .on_press(|s: &mut App| s.defaults += 1);
+    let root = col().w_full().h_full().padding(10.0);
+    let root = if s.hidden { root } else { root.child(picker) };
+    root.child(ColorSwatch::new(Color::WHITE).build(&k).key("chip")).child(ok)
 }
 
 fn app() -> Runtime<App> {
@@ -97,4 +117,128 @@ fn a_swatch_without_a_handler_is_an_image() {
     let rt = app();
     let chip = rt.elements().into_iter().find(|e| e.key.as_deref() == Some("chip")).unwrap();
     assert_eq!((chip.role, chip.label.as_deref()), ("img", Some("#ffffff")));
+}
+
+#[test]
+fn a_swatch_pick_commits_once() {
+    let mut rt = app();
+    press(&mut rt, "swatch2");
+    assert_eq!(rt.state.commits, vec![rt.state.color.unwrap()]);
+}
+
+#[test]
+fn a_hue_drag_commits_once_when_released() {
+    let mut rt = app();
+    press(&mut rt, "swatch0");
+    let (changes, commits) = (rt.state.changes, rt.state.commits.len());
+    let (x, y) = rt.find("tag-hue").unwrap();
+    rt.pointer_down(x - 40.0, y);
+    rt.frame(0.0);
+    for dx in [-20.0, 0.0, 20.0, 40.0] {
+        rt.pointer_move(x + dx, y);
+        rt.frame(0.0);
+    }
+    assert!(rt.state.changes >= changes + 4, "every step is a change");
+    assert_eq!(rt.state.commits.len(), commits, "no commit while dragging");
+    rt.pointer_up(x + 40.0, y);
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.len(), commits + 1, "one commit on release");
+    assert_eq!(rt.state.commits.last().map(|&c| hex(c)), Some(rt.state.picker.hex.text.clone()));
+}
+
+#[test]
+fn a_typed_hex_commits_on_return() {
+    let mut rt = app();
+    press(&mut rt, "tag-hex");
+    typed(&mut rt, "#123456");
+    assert!(rt.state.commits.is_empty(), "typing reports changes only");
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.iter().map(|&c| hex(c)).collect::<Vec<_>>(), vec!["#123456"]);
+}
+
+#[test]
+fn a_typed_hex_commits_when_the_field_loses_focus() {
+    let mut rt = app();
+    press(&mut rt, "tag-hex");
+    typed(&mut rt, "#abc");
+    assert!(rt.state.commits.is_empty());
+    rt.pointer_down(390.0, 390.0);
+    rt.frame(0.0);
+    rt.pointer_up(390.0, 390.0);
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert!(!rt.state.picker.hex.focused, "the press away blurred the field");
+    assert_eq!(rt.state.commits.iter().map(|&c| hex(c)).collect::<Vec<_>>(), vec!["#aabbcc"]);
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.len(), 1, "once");
+}
+
+#[test]
+fn the_hue_track_shows_the_hues() {
+    let rt = app();
+    let all = rt.elements();
+    let hue = all.iter().position(|e| e.key.as_deref() == Some("tag-hue")).unwrap();
+    assert!(all.iter().any(|e| e.parent == Some(hue) && e.key.as_deref() == Some("track")));
+    assert!(!all.iter().any(|e| e.parent == Some(hue) && e.key.as_deref() == Some("range")), "no accent fill over it");
+}
+
+#[test]
+fn a_swatch_after_typing_commits_the_typed_hex_on_blur_then_the_swatch() {
+    let mut rt = app();
+    press(&mut rt, "tag-hex");
+    typed(&mut rt, "#abc");
+    press(&mut rt, "swatch3");
+    rt.frame(0.0);
+    let picked = rt.state.color.unwrap();
+    // As on the web, the field's blur commits what was typed before the swatch's press lands.
+    let commits: Vec<String> = rt.state.commits.iter().map(|&c| hex(c)).collect();
+    assert_eq!(commits, vec!["#aabbcc".to_owned(), hex(picked)]);
+}
+
+#[test]
+fn return_with_nothing_typed_presses_the_default_button() {
+    let mut rt = app();
+    press(&mut rt, "tag-hex");
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!((rt.state.commits.len(), rt.state.defaults), (0, 1), "Return reached the default button");
+    // With a typed colour waiting, Return commits it and the field keeps the key.
+    typed(&mut rt, "#123456");
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.iter().map(|&c| hex(c)).collect::<Vec<_>>(), vec!["#123456"]);
+    assert_eq!(rt.state.defaults, 1);
+    // Committed: the next Return goes to the default button again.
+    rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!((rt.state.commits.len(), rt.state.defaults), (1, 2));
+}
+
+#[test]
+fn an_app_hiding_the_picker_takes_the_typed_colour() {
+    let mut rt = app();
+    press(&mut rt, "tag-hex");
+    typed(&mut rt, "#abc");
+    rt.update(|s: &mut App, _| {
+        s.hidden = true;
+        if let Some(c) = s.picker.take_pending() {
+            s.commits.push(c);
+        }
+    });
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.iter().map(|&c| hex(c)).collect::<Vec<_>>(), vec!["#aabbcc"]);
+    // Shown again and blurred later: taken, so not committed twice.
+    rt.update(|s: &mut App, _| s.hidden = false);
+    rt.frame(0.0);
+    rt.pointer_down(390.0, 390.0);
+    rt.frame(0.0);
+    rt.pointer_up(390.0, 390.0);
+    rt.frame(0.0);
+    rt.frame(0.0);
+    assert_eq!(rt.state.commits.len(), 1);
 }

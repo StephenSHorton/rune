@@ -128,13 +128,19 @@ tinted buttons.
 - `Avatar::new(name).image(&pixels).status(colour)` shows initials on a colour picked from the
   name until the picture has pixels; `.shape(AvatarShape::Rounded)` squares it.
 - `Skeleton::new().width(w).height(h)` (or `Skeleton::circle(d)`) pulses while content loads and
-  holds still under reduced motion. `Progress::indeterminate()` sweeps; `.height`, `.color`
-  and `.track` restyle a bar.
+  holds still under reduced motion. `Progress::indeterminate()` sweeps; `.height`, `.color`,
+  `.track` and `.radius` (0 for square ends) restyle a bar, and `.label_hidden()` keeps its
+  label for assistive technology only.
 - `ColorPicker::new(key, &s.picker, |s: &mut App| &mut s.picker).value(c).hue(true).on_change(..)`
-  is preset swatches, a hex field and a hue slider; `ColorSwatch` is one chip.
-- `BadgeVariant::{Success, Warning, Danger, Info}` take the kit's `StateColors`;
-  `IconButtonVariant::{Danger, Success}` colour the icon, and `Button::tint(fill, ink)` /
-  `IconButton::tint` paint a button in an app's own colours.
+  is preset swatches, a hex field and a hue slider; `.on_commit(..)` hears settled picks only
+  (`ColorPickerState::take_pending` for one typed when the picker hides); `ColorSwatch` is one chip, and
+  `.opener(open)` makes it a picker's trigger button.
+- `BadgeVariant::{Success, Warning, Danger, Info}` take the kit's `StateColors`; `Badge::pill`,
+  `.height`, `.padding`, `.border_width`, `.max_width` and `.plain` make a chip.
+  `IconButtonVariant::{Danger, Success}` colour the icon on the neutral button and
+  `{GhostDanger, GhostSuccess}` on a ghost one; `.glyph_size` sets the icon's size.
+  `Button::tint(fill, ink)` / `IconButton::tint` paint a button in an app's own colours.
+- `Avatar::new(name)` takes `.letter_size`, `.letter_weight`, `.single_initial` and `.help`.
 - A field `Select`'s listbox is at least as wide as its trigger (`.menu_width(w)` sets it);
   `Popover` and `HoverCard` take `.max_width` / `.min_width`.
 - `HoverCard::hover(&s.card, |s: &mut App| &mut s.card)` opens the card after the pointer

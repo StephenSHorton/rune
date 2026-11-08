@@ -127,12 +127,23 @@ pub struct Progress {
     height: f32,
     color: Option<Color>,
     track: Option<Color>,
+    radius: f32,
+    label_hidden: bool,
 }
 
 impl Progress {
     /// `value` in 0..=1; `None` is indeterminate.
     pub fn new(value: Option<f32>) -> Progress {
-        Progress { label: None, value, show_value: false, height: 8.0, color: None, track: None }
+        Progress {
+            label: None,
+            value,
+            show_value: false,
+            height: 8.0,
+            color: None,
+            track: None,
+            radius: 999.0,
+            label_hidden: false,
+        }
     }
     /// An indeterminate bar: work under way with no measure of how far along it is.
     pub fn indeterminate() -> Progress {
@@ -153,8 +164,21 @@ impl Progress {
         self.track = Some(c);
         self
     }
+    /// The corner radius of the track and the filled part, round ends by default; 0 draws
+    /// square ends, the indeterminate sweep's segment too.
+    pub fn radius(mut self, r: f32) -> Self {
+        self.radius = r.max(0.0);
+        self
+    }
+    /// What is progressing ("Upload"), shown above the bar and read by assistive technology.
     pub fn label(mut self, l: impl Into<String>) -> Self {
         self.label = Some(l.into());
+        self
+    }
+    /// Keep the [`Self::label`] for assistive technology only, with no header above the bar
+    /// (unless [`Self::show_value`] asks for one).
+    pub fn label_hidden(mut self) -> Self {
+        self.label_hidden = true;
         self
     }
     pub fn show_value(mut self) -> Self {
@@ -164,10 +188,13 @@ impl Progress {
     pub fn build(self, k: &Kit) -> El {
         let c = &k.c;
         let mut root = col().role("progressbar").w_full().gap(4.0);
-        if self.label.is_some() || self.show_value {
+        if let Some(l) = &self.label {
+            root = root.label(l.clone());
+        }
+        let shown = self.label.as_ref().filter(|_| !self.label_hidden);
+        if shown.is_some() || self.show_value {
             let mut header = row().key("header").gap(8.0).center_y();
-            if let Some(l) = &self.label {
-                root = root.label(l.clone());
+            if let Some(l) = shown {
                 header = header.child(text(l.clone()).key("label").font(k.ty.text_small).color(c.std_text));
             }
             header = header.child(spacer());
@@ -183,13 +210,13 @@ impl Progress {
             .key("track")
             .w_full()
             .h(self.height)
-            .radius(999.0)
+            .radius(self.radius)
             .fill(self.track.unwrap_or(c.surface_base))
             .clip_soft(0.0);
         if self.height > 4.0 {
             track = track.border(1.0, c.border_weak);
         }
-        let fill = el().key("fill").h_full().radius(999.0).fill(self.color.unwrap_or(c.border_active));
+        let fill = el().key("fill").h_full().radius(self.radius).fill(self.color.unwrap_or(c.border_active));
         track = track.child(match self.value {
             Some(v) => fill.w_frac(v.clamp(0.0, 1.0)),
             // A quarter-width segment crosses the whole track, then wraps from the left.
