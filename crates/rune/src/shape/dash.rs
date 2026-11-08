@@ -49,10 +49,17 @@ pub(crate) fn pieces(n: usize, point: impl Fn(usize) -> [f32; 2], closed: bool, 
     if !at.is_finite() {
         at = 0.0;
     }
+    // Each step below either reaches the end of a segment or lands `at` exactly on the next
+    // pattern boundary (the end of the dash, or the end of the period, which wraps to 0). So the
+    // pattern state always moves on, even where `t + remaining` rounds back to `t` in f32, and
+    // two boundaries in a row move `t` by about a period, which is far above an ulp of any `t`
+    // the piece cap allows (`length <= MAX_PIECES * period`). `steps` is a backstop only.
+    let snap = period * 1e-5;
+    let mut steps = 4 * (MAX_PIECES + count) + 16;
     for i in 0..count {
         let (a, b) = (point(i), point((i + 1) % n));
         let len = dist(a, b);
-        if len <= 0.0 {
+        if !(len > 0.0) {
             continue;
         }
         let along = |t: f32| {
@@ -61,23 +68,35 @@ pub(crate) fn pieces(n: usize, point: impl Fn(usize) -> [f32; 2], closed: bool, 
         };
         let mut t = 0.0;
         while t < len {
-            if at < on {
-                let end = (t + on - at).min(len);
-                piece(along(t), along(end));
-                at += end - t;
-                t = end;
-            } else {
-                // A zero-length dash is a dot where the pattern starts over.
-                if on == 0.0 && at == 0.0 {
-                    piece(along(t), along(t));
-                }
-                let end = (t + period - at).min(len);
-                at += end - t;
-                t = end;
+            steps = match steps.checked_sub(1) {
+                Some(s) => s,
+                None => return true,
+            };
+            let drawing = at < on;
+            // A zero-length dash is a dot where the pattern starts over.
+            if !drawing && on == 0.0 && at == 0.0 {
+                piece(along(t), along(t));
             }
-            if at >= period - 1e-4 {
+            let boundary = if drawing { on } else { period };
+            let want = t + (boundary - at);
+            let end = want.min(len);
+            // `end` can round back to `t` when the dash has less than half an ulp of `t` left;
+            // that sliver draws nothing.
+            if drawing && end > t {
+                piece(along(t), along(end));
+            }
+            if want < len {
+                at = boundary;
+            } else {
+                at = (at + (len - t)).min(boundary);
+                if boundary - at <= snap {
+                    at = boundary;
+                }
+            }
+            if at >= period {
                 at = 0.0;
             }
+            t = end;
         }
     }
     true
