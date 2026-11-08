@@ -3,15 +3,32 @@
 use rune::{Cx, El, Env, PointerKind, Runtime, TouchPhase, col, el};
 
 #[derive(Default)]
-struct Heard { presses: Vec<PointerKind>, moves: Vec<PointerKind>, drags: Vec<PointerKind> }
+struct Heard {
+    presses: Vec<PointerKind>,
+    moves: Vec<PointerKind>,
+    drags: Vec<PointerKind>,
+}
 
 fn view(_: &Heard, _: &mut Cx<Heard>) -> El {
-    col().w_full().h_full()
-        .child(el().key("button").w(40.0).h(40.0)
-            .on_press_tx(|s: &mut Heard, tx| s.presses.push(tx.pointer_kind()))
-            .on_pointer_move_local(|s: &mut Heard, e, _| s.moves.push(e.kind)))
-        .child(el().key("knob").w(40.0).h(40.0)
-            .on_drag(|s: &mut Heard, d, tx| { assert_eq!(tx.pointer_kind(), d.pointer_kind()); s.drags.push(d.pointer_kind()) }))
+    col()
+        .w_full()
+        .h_full()
+        .child(
+            el().key("button")
+                .w(40.0)
+                .h(40.0)
+                .on_press_tx(|s: &mut Heard, tx| s.presses.push(tx.pointer_kind()))
+                .on_pointer_move_local(|s: &mut Heard, e, _| s.moves.push(e.kind)),
+        )
+        .child(
+            el().key("knob")
+                .w(40.0)
+                .h(40.0)
+                .on_drag(|s: &mut Heard, d, tx| {
+                    assert_eq!(tx.pointer_kind(), d.pointer_kind());
+                    s.drags.push(d.pointer_kind())
+                }),
+        )
 }
 
 fn app() -> Runtime<Heard> {
@@ -35,9 +52,16 @@ fn a_click_is_a_mouse_and_a_tap_is_a_touch() {
     rt.pointer_down(20.0, 20.0);
     rt.pointer_up(20.0, 20.0);
     rt.frame(0.0);
-    assert_eq!(rt.state.presses, [PointerKind::Mouse, PointerKind::Touch, PointerKind::Mouse]);
+    assert_eq!(
+        rt.state.presses,
+        [PointerKind::Mouse, PointerKind::Touch, PointerKind::Mouse]
+    );
     assert_eq!(rt.state.moves.first(), Some(&PointerKind::Mouse));
-    assert!(rt.state.moves.contains(&PointerKind::Touch), "the finger landing moves the pointer: {:?}", rt.state.moves);
+    assert!(
+        rt.state.moves.contains(&PointerKind::Touch),
+        "the finger landing moves the pointer: {:?}",
+        rt.state.moves
+    );
 }
 
 #[test]
@@ -48,7 +72,11 @@ fn a_finger_drag_is_a_touch_on_every_phase() {
     rt.touch(7, TouchPhase::Ended, 34.0, 60.0, 1.04);
     rt.frame(0.0);
     assert!(rt.state.drags.len() >= 2, "{:?}", rt.state.drags);
-    assert!(rt.state.drags.iter().all(|k| *k == PointerKind::Touch), "{:?}", rt.state.drags);
+    assert!(
+        rt.state.drags.iter().all(|k| *k == PointerKind::Touch),
+        "{:?}",
+        rt.state.drags
+    );
     rt.pointer_move(20.0, 60.0);
     rt.pointer_down(20.0, 60.0);
     rt.pointer_up(30.0, 60.0);
