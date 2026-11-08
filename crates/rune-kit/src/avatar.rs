@@ -16,8 +16,10 @@ pub enum AvatarShape {
 /// `Avatar::new("Ada Lovelace").image(&s.photo).size(32.0).status(k.c.success.icon).build(&k)`.
 ///
 /// It shows the initials ("AL") on a colour picked from the name, the same on every build, and
-/// the picture over them once it has pixels, so a picture still loading shows the initials.
-/// Assistive technology reads it as an image named for the person.
+/// the picture over them while it has no pixels yet, so a picture still loading shows the
+/// initials. Once the picture has pixels when the avatar is built, the colour and initials are
+/// left out, so a picture with transparent parts doesn't show them through. Assistive
+/// technology reads it as an image named for the person.
 pub struct Avatar {
     name: String,
     initials: Option<String>,
@@ -27,6 +29,10 @@ pub struct Avatar {
     fill: Option<Color>,
     ink: Option<Color>,
     status: Option<Color>,
+    letter_size: Option<f32>,
+    letter_weight: f32,
+    one_letter: bool,
+    help: Option<String>,
 }
 
 impl Avatar {
@@ -40,6 +46,10 @@ impl Avatar {
             fill: None,
             ink: None,
             status: None,
+            letter_size: None,
+            letter_weight: 600.0,
+            one_letter: false,
+            help: None,
         }
     }
     /// The picture, filling the avatar (cropped to its shape).
@@ -59,6 +69,27 @@ impl Avatar {
     /// The letters shown without a picture, in place of the name's initials.
     pub fn initials(mut self, s: impl Into<String>) -> Self {
         self.initials = Some(s.into());
+        self
+    }
+    /// The initials' type size in points, in place of 0.4 of the side (rounded, at least 6).
+    pub fn letter_size(mut self, pt: f32) -> Self {
+        self.letter_size = Some(pt.max(1.0));
+        self
+    }
+    /// The initials' weight, 600 by default.
+    pub fn letter_weight(mut self, w: f32) -> Self {
+        self.letter_weight = w;
+        self
+    }
+    /// Show only the name's first letter ("Ada Lovelace" → "A"), not its first and last words'.
+    pub fn single_initial(mut self) -> Self {
+        self.one_letter = true;
+        self
+    }
+    /// Tooltip text shown after the hover delay (`El::help`), such as the person's name and
+    /// status.
+    pub fn help(mut self, text: impl Into<String>) -> Self {
+        self.help = Some(text.into());
         self
     }
     /// The colour behind the initials, in place of the one picked from the name.
@@ -83,22 +114,26 @@ impl Avatar {
             AvatarShape::Round => side / 2.0,
             AvatarShape::Rounded => k.radius.md.min(side / 4.0),
         };
-        let letters = self.initials.clone().unwrap_or_else(|| initials(&self.name));
-        let font = TextStyle { size: (side * 0.4).round().max(6.0), weight: 600.0, line_height: 0.0, ..k.ty.ui_medium };
-        let mut face = el()
-            .key("face")
-            .size(side, side)
-            .radius(radius)
-            .fill(self.fill.unwrap_or_else(|| name_color(&self.name)))
-            .center()
-            .a11y_hidden()
-            .child(text(letters).key("initials").font(font).color(self.ink.unwrap_or(Color::WHITE)));
+        let words = if self.one_letter { 1 } else { 2 };
+        let letters = self.initials.clone().unwrap_or_else(|| initials_of(&self.name, words));
+        let size = self.letter_size.unwrap_or_else(|| (side * 0.4).round().max(6.0));
+        let font = TextStyle { size, weight: self.letter_weight, line_height: 0.0, ..k.ty.ui_medium };
+        let pictured = self.image.as_ref().is_some_and(|p| p.size() != (0, 0));
+        let mut face = el().key("face").size(side, side).radius(radius).center().a11y_hidden();
+        if !pictured {
+            face = face
+                .fill(self.fill.unwrap_or_else(|| name_color(&self.name)))
+                .child(text(letters).key("initials").font(font).color(self.ink.unwrap_or(Color::WHITE)));
+        }
         if let Some(p) = &self.image {
             face = face.child(
                 el().key("image").absolute(0.0, 0.0).size(side, side).radius(radius).pixels_fit(p, SurfaceFit::Fill),
             );
         }
         let mut e = el().role("img").label(self.name).size(side, side).child(face);
+        if let Some(h) = self.help {
+            e = e.help(h);
+        }
         if let Some(c) = self.status {
             let dot = (side * 0.3).round().max(6.0);
             let ring = (side / 16.0).clamp(1.5, 3.0);
@@ -117,13 +152,14 @@ impl Avatar {
 }
 
 /// The first letters of the name's first and last words, upper-cased ("Ada Lovelace" → "AL",
-/// "plato" → "P").
-pub(crate) fn initials(name: &str) -> String {
-    let words: Vec<&str> = name.split_whitespace().filter(|w| w.chars().any(char::is_alphanumeric)).collect();
+/// "plato" → "P"), or with `words` 1 of its first word only ("Ada Lovelace" → "A").
+pub(crate) fn initials_of(name: &str, words: usize) -> String {
+    let all: Vec<&str> = name.split_whitespace().filter(|w| w.chars().any(char::is_alphanumeric)).collect();
     let first = |w: &str| w.chars().find(|c| c.is_alphanumeric());
     let mut out = String::new();
-    let picks = match words.as_slice() {
+    let picks = match all.as_slice() {
         [] => vec![],
+        [one, ..] if words < 2 => vec![*one],
         [one] => vec![*one],
         [a, .., b] => vec![*a, *b],
     };

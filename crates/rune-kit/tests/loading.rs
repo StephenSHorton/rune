@@ -15,6 +15,18 @@ fn view(s: &Case, cx: &mut Cx<Case>) -> El {
         2 => col()
             .child(Avatar::new("Ada Lovelace").size(40.0).status(Color::WHITE).build(&k).key("ada"))
             .child(Avatar::new("Grace Hopper").image(&s.photo).shape(AvatarShape::Rounded).build(&k).key("grace")),
+        3 => col()
+            .child(
+                Avatar::new("Ada Lovelace")
+                    .size(20.0)
+                    .letter_size(10.0)
+                    .single_initial()
+                    .help("Ada")
+                    .build(&k)
+                    .key("ada"),
+            )
+            .child(Avatar::new("Ada Lovelace").size(20.0).build(&k).key("plain"))
+            .child(Avatar::new("Grace Hopper").image(&s.photo).build(&k).key("grace")),
         _ => unreachable!(),
     };
     col().w_full().h_full().child(body)
@@ -106,4 +118,19 @@ fn an_avatar_shows_initials_its_dot_and_a_picture_over_them() {
     let face = info(&rt, "grace/face");
     assert!(face.radius < 16.0, "rounded, not round: {}", face.radius);
     rt.frame(0.0);
+}
+
+#[test]
+fn an_avatar_sizes_one_letter_and_drops_it_under_a_loaded_picture() {
+    let mut rt = Runtime::new(Case { which: 3, photo: Pixels::new() }, view, (300.0, 200.0), Env::new(false, 1.0));
+    rt.state.photo.set(1, 1, vec![0, 0, 0, 0]);
+    rt.frame(0.0);
+    assert_eq!(info(&rt, "ada/initials").text.as_deref(), Some("A"));
+    assert_eq!(info(&rt, "plain/initials").text.as_deref(), Some("AL"));
+    let (big, small) = (info(&rt, "ada/initials").rect[3], info(&rt, "plain/initials").rect[3]);
+    assert!(big > small, "10 pt letters stand taller than the default 8: {big} vs {small}");
+    assert_eq!(info(&rt, "ada").help.as_deref(), Some("Ada"));
+    assert!(lookup(&rt, "grace/initials").is_none(), "no initials under a picture with pixels");
+    assert_eq!(info(&rt, "grace/face").fill, Color::TRANSPARENT, "no colour under it either");
+    assert!(lookup(&rt, "grace/image").is_some());
 }
