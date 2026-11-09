@@ -77,7 +77,9 @@ pub(crate) fn map_key(key: &WKey, m: ModifiersState) -> Option<KeyEvent> {
 /// follow the key's Latin virtual key and macOS's switch to a Latin layout under ⌘: Ctrl+V
 /// pastes on every layout.
 pub(crate) fn map_key_event(event: &winit::event::KeyEvent, m: ModifiersState) -> Option<KeyEvent> {
-    let mut ev = map_key(&event.logical_key, m).or_else(|| unidentified(event, m))?;
+    let mut ev = map_key(&event.logical_key, m)
+        .or_else(|| unidentified(event, m))
+        .or_else(|| keyless_text(&event.logical_key, event.text.as_deref(), m))?;
     if !cfg!(target_os = "macos")
         && let Key::Command(c) = ev.key
         && !c.is_ascii()
@@ -96,6 +98,18 @@ fn unidentified(event: &winit::event::KeyEvent, m: ModifiersState) -> Option<Key
     let c = key_base(event).filter(|c| !c.is_control() && *c != ' ')?;
     let key = if mods.cmd { Key::Command(c.to_ascii_lowercase()) } else { Key::Text(c.to_string()) };
     Some(KeyEvent { key, mods })
+}
+
+/// Text that arrives with no key behind it. Windows sends `SendInput` Unicode as `VK_PACKET`,
+/// which is how the on-screen keyboard, the emoji panel, AutoHotkey and remote-control tools
+/// type; winit names no logical key for it but carries the characters in `text`. Without
+/// this, nothing they typed reached a field.
+fn keyless_text(key: &WKey, text: Option<&str>, m: ModifiersState) -> Option<KeyEvent> {
+    let WKey::Unidentified(_) = key else { return None };
+    let mods = map_mods(m);
+    if mods.cmd || mods.ctrl { return None; }
+    let text = text.filter(|t| !t.is_empty() && !t.chars().any(char::is_control))?;
+    Some(KeyEvent { key: Key::Text(text.to_owned()), mods })
 }
 
 /// The character `event`'s key types under the current layout with no modifiers, for
@@ -130,5 +144,20 @@ mod tests {
         ] {
             assert_eq!(map_key(&WKey::Named(named), ModifiersState::empty()).map(|ev| ev.key.clone()), Some(key));
         }
+    }
+
+    #[test]
+    fn text_with_no_key_types_it() {
+        use winit::keyboard::NativeKey;
+        let packet = WKey::Unidentified(NativeKey::Windows(0xE7));
+        let typed = |text, m| keyless_text(&packet, text, m).map(|ev| ev.key.clone());
+        assert_eq!(typed(Some("硯"), ModifiersState::empty()), Some(Key::Text("硯".into())));
+        assert_eq!(typed(Some("😀"), ModifiersState::SHIFT), Some(Key::Text("😀".into())));
+        // Nothing typed, control characters, and Ctrl chords stay with the other paths.
+        assert_eq!(typed(None, ModifiersState::empty()), None);
+        assert_eq!(typed(Some("\r"), ModifiersState::empty()), None);
+        assert_eq!(typed(Some("a"), ModifiersState::CONTROL), None);
+        // A named or character key keeps its own mapping.
+        assert_eq!(keyless_text(&WKey::Character("a".into()), Some("a"), ModifiersState::empty()), None);
     }
 }

@@ -1,0 +1,1 @@
+- **Text sent with no key behind it now types on Windows.** The on-screen keyboard, the emoji panel, AutoHotkey and remote-control tools send characters as `VK_PACKET`, which winit reports with no logical key. Rune dropped those key events, so nothing they typed reached a field or an `on_key` handler. They now arrive as `Key::Text` with the characters typed.
