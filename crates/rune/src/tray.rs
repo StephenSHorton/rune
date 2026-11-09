@@ -29,14 +29,65 @@ impl TrayIcon {
 pub enum TrayItem {
     /// `id` comes back in [`TrayEvent::Menu`] when it's picked.
     Action { id: String, label: String, enabled: bool },
+    /// An item with a check mark beside it while `checked` (the platform's own mark, not a
+    /// glyph in the label). Picking it sends [`TrayEvent::Menu`] with `id` and changes nothing
+    /// by itself: the app owns the state, flips it, and passes the new menu to
+    /// [`Tray::set_menu`].
+    Check { id: String, label: String, checked: bool, enabled: bool },
     Separator,
 }
 impl TrayItem {
     pub fn action(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self::Action { id: id.into(), label: label.into(), enabled: true }
     }
+    /// A check item, enabled, checked or not.
+    ///
+    /// ```
+    /// use rune::TrayItem;
+    /// let launch_at_login = true;
+    /// let item = TrayItem::check("login", "Open at Login", launch_at_login);
+    /// assert_eq!(item.is_checked(), Some(true));
+    /// ```
+    pub fn check(id: impl Into<String>, label: impl Into<String>, checked: bool) -> Self {
+        Self::Check { id: id.into(), label: label.into(), checked, enabled: true }
+    }
     pub fn enabled(self, enabled: bool) -> Self {
-        match self { Self::Action { id, label, .. } => Self::Action { id, label, enabled }, separator => separator }
+        match self {
+            Self::Action { id, label, .. } => Self::Action { id, label, enabled },
+            Self::Check { id, label, checked, .. } => Self::Check { id, label, checked, enabled },
+            separator => separator,
+        }
+    }
+    /// Whether a check item is checked; `None` for other items.
+    pub fn is_checked(&self) -> Option<bool> {
+        match self { Self::Check { checked, .. } => Some(*checked), _ => None }
+    }
+    /// The id a pick of this item sends, enabled or not; `None` for a separator.
+    pub fn id(&self) -> Option<&str> {
+        match self { Self::Action { id, .. } | Self::Check { id, .. } => Some(id), Self::Separator => None }
+    }
+    /// The label, for items that show one; `None` for a separator.
+    pub fn label(&self) -> Option<&str> {
+        match self { Self::Action { label, .. } | Self::Check { label, .. } => Some(label), Self::Separator => None }
+    }
+    /// Whether the item can be picked; false for a separator.
+    pub fn is_enabled(&self) -> bool {
+        match self { Self::Action { enabled, .. } | Self::Check { enabled, .. } => *enabled, Self::Separator => false }
+    }
+    /// The id a pick of this item sends, when it can be picked: `None` for a disabled item or
+    /// a separator. An app can test a menu it built with these:
+    ///
+    /// ```
+    /// use rune::TrayItem;
+    /// let quit = TrayItem::action("quit", "Quit").enabled(false);
+    /// assert_eq!((quit.id(), quit.label(), quit.is_enabled(), quit.picked()), (Some("quit"), Some("Quit"), false, None));
+    /// assert_eq!(TrayItem::check("login", "Open at Login", true).picked(), Some("login"));
+    /// ```
+    pub fn picked(&self) -> Option<&str> {
+        match self {
+            Self::Action { id, enabled: true, .. } | Self::Check { id, enabled: true, .. } => Some(id),
+            _ => None,
+        }
     }
 }
 
@@ -119,6 +170,20 @@ mod tests {
     fn enabled_leaves_separators_alone() {
         assert_eq!(TrayItem::Separator.enabled(false), TrayItem::Separator);
         assert_eq!(TrayItem::action("q", "Quit").enabled(false), TrayItem::Action { id: "q".into(), label: "Quit".into(), enabled: false });
+    }
+
+    #[test]
+    fn a_check_item_keeps_its_state_through_enabled_and_picks_only_when_enabled() {
+        let on = TrayItem::check("login", "Open at Login", true);
+        assert_eq!(on.is_checked(), Some(true));
+        assert_eq!(on.label(), Some("Open at Login"));
+        assert_eq!(on.picked(), Some("login"));
+        let off = TrayItem::check("login", "Open at Login", false).enabled(false);
+        assert_eq!(off, TrayItem::Check { id: "login".into(), label: "Open at Login".into(), checked: false, enabled: false });
+        assert_eq!(off.picked(), None);
+        assert!(!off.is_enabled());
+        assert_eq!(TrayItem::action("q", "Quit").is_checked(), None);
+        assert_eq!(TrayItem::Separator.picked(), None);
     }
 
     #[test]

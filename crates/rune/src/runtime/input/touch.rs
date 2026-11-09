@@ -25,6 +25,8 @@ pub enum TouchPhase {
 pub(super) struct Touch {
     pub(super) scroll: Option<scroll_touch::TouchScroll>,
     finger: Option<Finger>,
+    /// A touch event is being handled: the pointer calls it makes are a finger's.
+    driving: bool,
 }
 
 struct Finger {
@@ -52,11 +54,18 @@ impl<S: 'static> Runtime<S> {
     /// One touch event at (x, y) in window points, `time` in seconds on any steady clock. A
     /// host with touches calls this for every one; `id` tells fingers apart.
     pub fn touch(&mut self, id: u64, phase: TouchPhase, x: f32, y: f32, time: f64) {
+        self.touch.driving = true;
         match phase {
             TouchPhase::Started => self.touch_down(id, x, y, time),
             TouchPhase::Moved => self.touch_move(id, x, y, time),
             TouchPhase::Ended | TouchPhase::Cancelled => self.touch_up(id, x, y, time, phase == TouchPhase::Cancelled),
         }
+        self.touch.driving = false;
+    }
+
+    /// What drives the pointer calls being handled now: a finger inside `touch`, else the mouse.
+    pub(super) fn pointer_kind(&self) -> crate::PointerKind {
+        if self.touch.driving { crate::PointerKind::Touch } else { crate::PointerKind::Mouse }
     }
 
     /// Whether a finger is down: a host ignores the mouse events its system makes up from it.

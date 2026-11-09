@@ -35,17 +35,21 @@ fn registered_family_is_independent_of_slots_and_cache_entries() {
     assert!(std::rc::Rc::ptr_eq(&named, &again));
     let other = system.layout_rich("Hello 0123", &[], default.family(Family::Named("Inter")), 2.0, None);
     assert!(!std::rc::Rc::ptr_eq(&named, &other), "the family name must participate in the cache key");
-    for style in [DISPLAY.mono(), DISPLAY.family(Family::Sans)] {
-        let layout = system.layout_rich("Hello 0123", &[], style, 2.0, None);
-        for run in layout.lines().flat_map(|l| l.runs()) {
-            assert_eq!(run.font().data.as_ref(), INTER);
-        }
+    let sans_style = system.layout_rich("Hello 0123", &[], DISPLAY.family(Family::Sans), 2.0, None);
+    for run in sans_style.lines().flat_map(|l| l.runs()) {
+        assert_eq!(run.font().data.as_ref(), INTER);
+    }
+    // The mono slot here is Inter, which isn't monospaced, so mono text falls back to the
+    // system mono (text/mono_fallback.rs). Either way it leaves the named family.
+    let mono = system.layout_rich("Hello 0123", &[], DISPLAY.mono(), 2.0, None);
+    for run in mono.lines().flat_map(|l| l.runs()) {
+        assert_ne!(run.font().data.as_ref(), PLEX, "mono leaves the named family");
     }
     let spans = [Span { mono: true, ..Span::new(6, 10) }];
     let rich = system.layout_rich("Hello 0123", &spans, DISPLAY, 2.0, None);
     assert!(rich.lines().flat_map(|l| l.runs()).any(|r| r.font().data.as_ref() == PLEX));
-    assert!(rich.lines().flat_map(|l| l.runs()).any(|r| r.font().data.as_ref() == INTER),
-        "mono spans still select the mono slot");
+    assert!(rich.lines().flat_map(|l| l.runs()).any(|r| r.font().data.as_ref() != PLEX),
+        "mono spans leave the named family for the mono slot or its fallback");
 }
 
 #[test]

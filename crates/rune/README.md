@@ -78,6 +78,11 @@ Rune's core crate: views, layout, animation, rendering, text and the native shel
     segment (`KIND_SEGMENT`); fills are triangles (`KIND_TRIANGLE`) antialiased only on polygon
     edges, so they have no seams. No atlas, so a shape can change every frame (`examples/shapes`).
     Translucent strokes blend twice where segments overlap at a joint; fills do not overlap.
+    `Shape::dashed(dash, gap)` draws strokes as dashes (cut on the CPU into the same segments,
+    so a dashed edge costs one instance per dash) and `Shape::dash_offset` slides them;
+    `El::dash_flow(speed)` marches them along at `speed` points a second on the renderer's clock,
+    without rebuilding the view, and holds them still under Reduce Motion (a node graph's
+    animated edges).
   - Every instance has a soft-edge clip (`clip_soft`, `clip_fade`).
   - Windows blend in sRGB-encoded space by default, as Core Animation, CoreText and CSS do.
     `.srgb_blend(false)` on `App`, `WindowSpec` or `ConfiguredOverlay` opts out into linear-light
@@ -425,7 +430,9 @@ policy changes are applied in the same mutation phase.
 - **Turn actions**: a transcript view can reserve a stable tail and crossfades Working into the
   Desktop copy icon over .34 s, without removing and re-adding the tail's height. `Tx::copy(text)`
   requests a shell clipboard write. Requests follow handler order; headless runs never write the
-  system clipboard.
+  system clipboard. `Tx::copy_checked(text, |s, result, tx| ..)` (and `copy_rich_checked`) runs
+  its callback as an update with `Ok(())` or the reason the write failed, so an app can say
+  "Couldn't copy".
 - **Text input** (`text_input(&edit, style)`, `edit.rs`): caret, selection, word and line motion,
   select all, copy, cut and paste, undo, and IME preedit through winit (see [Text fields](#text-fields)). `.on_edit(..)` binds the `TextEdit` in app
   state and `.on_submit(..)` runs on Enter.
@@ -900,6 +907,9 @@ also restores them. On macOS, no-focus show uses `orderFrontRegardless`, rather 
 `makeKeyAndOrderFront`. Window-manager focus policy still applies. `WindowHandle`
 also provides show/hide/focus, placement and topmost control on the event thread.
 The app owns its tray; Rune supplies the window lifetime and handles.
+A `rune::Tray` (Windows and Linux) takes `TrayItem::action`, `TrayItem::check(id, label, checked)`
+(the platform's check mark; a pick sends `TrayEvent::Menu(id)` and the app passes the flipped
+menu to `Tray::set_menu`) and `TrayItem::Separator`.
 `RunOptions::accessory` applies the macOS process policy before the event loop is
 created: no Dock icon/default menu and no activation at launch. Other platforms
 ignore it; `run_windows` keeps its regular-launch default.
@@ -1093,7 +1103,9 @@ name with `TextStyle::new(32.0, 400.0).family(Family::Named("Anton"))`. The name
 literal family name, not a CSS list or filename. Named families fall back to the
 sans slot when absent or missing a glyph, followed by the existing symbol/script
 fallbacks. `Family::Sans`, `Family::Mono`, and `.mono()` keep their existing meaning;
-mono rich spans still use the mono slot. Named styles remain `Copy` and const-friendly
+mono rich spans still use the mono slot. When that slot holds no monospaced face (the app
+named none, so it is the sans, or named one it didn't register), `Family::Mono` and mono spans
+take `Family::SystemMono`'s families first, so code stays monospaced without setup. Named styles remain `Copy` and const-friendly
 and the family name participates in the layout cache key.
 
 Monospace text (mono rich spans, `Family::Mono` and `Family::SystemMono`) turns off `liga`,
@@ -1251,6 +1263,18 @@ history-exclusion marker and expires on Rune's shared clipboard worker. Expiry
 compares the current text and, on macOS/Windows, the clipboard revision; copying
 something else cancels the old expiry. Linux's portable API exposes no revision,
 so it compares text. Clipboard managers must honor the platform marker themselves.
+
+`cx.caret("composer")` reads the focused field's caret line `[x, y, w, h]` in window points
+(the field keyed `composer`, or one inside it), and `--tree` lists it as `caret` on the field.
+To hang a popup from it, as an `@`-mention picker hangs under the word being typed, anchor the
+popup with `.anchored_to_caret("composer", Side::Bottom, Align::Start, 4.0)` (or
+`.anchored_fit(..).anchored_at_caret()`): it flips and stays inside the window as
+`El::anchored` does, follows typing, scrolling and IME composition in the frame the caret
+moves, and sits beside the field's box while it has no focus. Kit's `PopupList::at_caret` and
+`Popover::at_caret` use it.
+
+Text with line breaks aligns each line by `El::align`: `text("Saved\n3 files").align(Align::Center)`
+centres both lines, as wrapped text (`.wrap()`) centres each line in its width.
 
 Put `.on_paste(|s: &mut State, text: &str, tx| { ... })` on the view root (or modal
 root) to handle Cmd/Ctrl-V when no field is focused. `tx.request_paste()` requests
@@ -1535,7 +1559,10 @@ Or ask from a handler, with no executor or waker to wire up:
 - The window shows the dialog once the handler's frame is done (a sheet on macOS, owned by
   the window on Windows, the portal's chooser on Linux) and keeps drawing while it's up. The
   answer runs the callback on a later frame, as `tx.read_clipboard` does. `tx.save_file` is
-  the same for a Save dialog, and `tx.open_folder` for an Open dialog that picks a folder
+  the same for a Save dialog, `tx.open_files` for an Open dialog that picks one or more files
+  (its callback gets `Result<Vec<PathBuf>, _>`, empty when cancelled; `"kind": "files"` in
+  `--tree`; `FileDialogs::open_files` for the async form), and `tx.open_folder` for an Open
+  dialog that picks a folder
   (`FileDialogKind::Folder`, `"kind": "folder"` in `--tree`; filters and file name don't apply;
   the portal's `directory` chooser on Linux).
 - One dialog at a time: asked for while one is open, the callback gets an error at once and
@@ -1545,8 +1572,10 @@ Or ask from a handler, with no executor or waker to wire up:
 - Without the `native-file-dialog` feature, and on the web, the callback gets an error.
 - Headless runs (`--tree`, scripts, tests) keep it open as `fileDialog` in `--tree` (kind,
   title, filters, directory, fileName) until `{"type": "file-dialog", "path": "/exports/a.json"}`
-  or `{"type": "file-dialog-cancel"}` answers it. Tests read it with `Runtime::file_dialog()`
-  and answer with `Runtime::resolve_file_dialog(Some(path))` or `(None)`.
+  (`"paths": ["/a.png", "/b.png"]` for several files) or `{"type": "file-dialog-cancel"}`
+  answers it. Tests read it with `Runtime::file_dialog()` and answer with
+  `Runtime::resolve_file_dialog(Some(path))` or `(None)`, or `resolve_file_dialog_files(paths)`.
+  Scripted fixtures queue a multi-file answer with `FileDialogs::scripted(..).then_files(paths)`.
 
 ### Dragging out to other apps (`drag_out`)
 
@@ -1762,7 +1791,7 @@ For static assets, construct an `ImageCache` once with the app's setup waker:
 
 ```rust,ignore
 let cache = rune::ImageCache::new(waker);
-let icon = cache.load(png_bytes); // PNG, JPEG, PNG-backed ICNS, or SVG
+let icon = cache.load(png_bytes); // PNG, JPEG, WebP, GIF (first frame), PNG-backed ICNS, or SVG
 // Keep `icon` in app state; pending images paint nothing, completion wakes the app.
 el().size(32.0, 32.0).pixels(icon.pixels())
 ```
@@ -1792,7 +1821,8 @@ let photo = cache.url("https://example.com/p.avif", 96.0, scale); // web: the br
 
 `cache.file` treats `.svg` and `.svgz` paths (or SVG content) as vectors and decodes other
 files like `load`. On web, `cache.file` and `cache.url` fetch the URL (relative to the page) and
-let the browser decode it off the main thread, so WebP and AVIF work there; SVG still rasterizes
+let the browser decode it off the main thread, so AVIF works there too (native decodes WebP and
+the first frame of a GIF itself); SVG still rasterizes
 through resvg. On native `cache.url` takes a path or `file:` URL only: Rune has no HTTP client,
 so fetch remote bytes yourself and call `load`. `cache.load` recognises SVG by its content and rasterizes it at twice its
 own size. SVG text needs fonts resvg isn't given, so convert text to paths. With the feature

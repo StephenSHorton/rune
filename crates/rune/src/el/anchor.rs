@@ -23,6 +23,9 @@ pub struct Anchor {
     pub unscaled: bool,
     /// [`El::anchored_round`]: at whole points.
     pub round: bool,
+    /// [`El::anchored_to_caret`]: beside the caret line of the focused text field at or inside
+    /// the anchor, rather than the anchor's box.
+    pub caret: bool,
 }
 
 impl El {
@@ -43,7 +46,7 @@ impl El {
     /// scale.
     pub fn anchored(mut self, key: impl Into<String>, side: Side, align: Align, gap: f32) -> Self {
         self.style.set_position_absolute();
-        self.above = Some(Anchor { key: key.into(), side, align, gap, fit: false, unscaled: false, round: false });
+        self.above = Some(Anchor { key: key.into(), side, align, gap, fit: false, unscaled: false, round: false, caret: false });
         self
     }
     /// [`El::anchored`], sized to the window as Floating UI's `size` middleware sizes a
@@ -64,6 +67,30 @@ impl El {
     pub fn anchored_unscaled(mut self) -> Self {
         if let Some(a) = &mut self.above {
             a.unscaled = true;
+        }
+        self
+    }
+    /// Position an out-of-flow overlay beside the caret of the focused text field keyed `key`
+    /// (a `text_input` keyed `key`, or one inside an element keyed `key`), as an `@`-mention
+    /// or `#`-reference picker hangs under the word being typed. `Side::Bottom` with
+    /// `Align::Start` puts its top-left corner under the caret line. It flips and stays inside
+    /// the window as [`El::anchored`] does, and follows the caret in the frame it moves: typing,
+    /// scrolling and IME composition. While no field under `key` has focus it sits beside the
+    /// element keyed `key` instead. The caret is the one [`Cx::caret`](crate::Cx::caret) reports.
+    ///
+    /// ```ignore
+    /// let field = text_input(&s.draft, style).key("composer").on_edit(|s: &mut App| &mut s.draft);
+    /// let picker = col().child(rows).anchored_to_caret("composer", Side::Bottom, Align::Start, 4.0);
+    /// ```
+    pub fn anchored_to_caret(self, key: impl Into<String>, side: Side, align: Align, gap: f32) -> Self {
+        self.anchored(key, side, align, gap).anchored_at_caret()
+    }
+    /// Move this [`El::anchored`] or [`El::anchored_fit`] overlay to the caret of the focused
+    /// text field at or inside its anchor, as [`El::anchored_to_caret`]. Call it after
+    /// `anchored` or `anchored_fit`.
+    pub fn anchored_at_caret(mut self) -> Self {
+        if let Some(a) = &mut self.above {
+            a.caret = true;
         }
         self
     }
@@ -90,7 +117,7 @@ impl El {
 /// assert_eq!(r, [20.0, 166.0, 120.0, 246.0]);
 /// ```
 pub fn anchor_rect(trigger: [f32; 4], size: (f32, f32), side: Side, align: Align, gap: f32, window: (f32, f32)) -> [f32; 4] {
-    let a = Anchor { key: String::new(), side, align, gap, fit: false, unscaled: false, round: false };
+    let a = Anchor { key: String::new(), side, align, gap, fit: false, unscaled: false, round: false, caret: false };
     let (x, y) = crate::runtime::anchor_position(&a, trigger, size, window);
     [x, y, x + size.0, y + size.1]
 }

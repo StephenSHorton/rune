@@ -10,7 +10,8 @@ impl Client {
         if rt.clipboard.is_some() { return flush_memory(rt); }
         // Nothing to clear before the first write.
         if std::mem::take(&mut rt.clear_secret_request) && let Some(w) = WORKER.get() { let _ = w.sender.send(Request::Clear(None)); }
-        if let Some(copy) = rt.copy_request.take() {
+        if let Some(mut copy) = rt.copy_request.take() {
+            self.route_report(&mut copy);
             let worker = worker();
             copy.bind(Route::System(worker.clone()));
             let _ = worker.send(Request::Write(copy, Some(Notify { changed: self.changed.clone(), wake: self.wake.clone() })));
@@ -109,9 +110,12 @@ fn run_worker<B: Backend>(recv: mpsc::Receiver<Request>, mut open: impl FnMut() 
         if matches!(request, Request::Clear(_)) && core.held.is_none() { continue; }
         if clipboard.is_none() { clipboard = open(); }
         let Some(cb) = &mut clipboard else {
-            if let Request::Write(copy, notify) = request && let Some(slot) = copy.slot() {
-                slot.set(SecretState::Failed("no clipboard".into()));
-                if let Some(n) = notify { n.send(); }
+            if let Request::Write(copy, notify) = request {
+                copy.report(&Err("no clipboard".into()));
+                if let Some(slot) = copy.slot() {
+                    slot.set(SecretState::Failed("no clipboard".into()));
+                    if let Some(n) = notify { n.send(); }
+                }
             }
             continue;
         };

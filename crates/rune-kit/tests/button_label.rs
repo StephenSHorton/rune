@@ -114,3 +114,27 @@ fn a_rolling_button_with_an_icon_and_neighbour_springs_without_jumps() {
     assert!((cancel_xs[0] - cancel_from).abs() < 1.0, "neighbour starts at its old x: {} vs {cancel_from}", cancel_xs[0]);
     assert!(cancel_xs.windows(2).all(|x| (x[1] - x[0]).abs() < 4.0), "neighbour slides with no jump: {cancel_xs:?}");
 }
+
+#[test]
+fn a_wrapping_label_grows_the_button_taller_inside_its_width() {
+    fn view(wrap: &bool, _: &mut Cx<bool>) -> El {
+        let k = Kit::neutral(true);
+        let b = Button::new("Allow this session to read and write every file in the project");
+        let b = if *wrap { b.wrap() } else { b };
+        rune::col().padding(20.0).items_start().child(b.build(&k).key("button").max_w(160.0))
+    }
+    let wrapped = {
+        let mut rt = Runtime::new(true, view, (400.0, 300.0), Env::new(true, 2.0));
+        rt.frame(0.0);
+        rt
+    };
+    let (button, label) = (rect(&wrapped, "button"), rect(&wrapped, "label"));
+    assert!(button[2] <= 160.0 + 0.01, "at most its width: {button:?}");
+    assert!(button[3] > 40.0, "taller than one 24 point line: {button:?}");
+    assert!(label[0] >= button[0] && label[0] + label[2] <= button[0] + button[2] + 0.01, "the label inside: {label:?} in {button:?}");
+    assert!(label[1] > button[1] && label[1] + label[3] < button[1] + button[3], "padded top and bottom: {label:?} in {button:?}");
+
+    let mut one = Runtime::new(false, view, (400.0, 300.0), Env::new(true, 2.0));
+    one.frame(0.0);
+    assert_eq!(rect(&one, "button")[3], 24.0, "unwrapped, it keeps its control height");
+}

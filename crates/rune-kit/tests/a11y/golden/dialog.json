@@ -9,12 +9,19 @@
                 {
                   "children": [
                     {
-                      "name": "Delete file?",
-                      "role": "label"
-                    },
-                    {
-                      "name": "This can't be undone.",
-                      "role": "label"
+                      "children": [
+                        {
+                          "name": "Delete file?",
+                          "role": "label"
+                        },
+                        {
+                          "key": "description",
+                          "name": "This can't be undone.",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "title",
+                      "role": "group"
                     },
                     {
                       "actions": [
@@ -33,19 +40,37 @@
                   "role": "group"
                 },
                 {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
                   "children": [
                     {
                       "actions": [
-                        "click",
-                        "focus"
+                        "scroll-into-view"
                       ],
-                      "key": "confirm-delete",
-                      "name": "Delete",
-                      "role": "button"
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "key": "confirm-delete",
+                          "name": "Delete",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "content",
+                      "role": "group"
                     }
                   ],
                   "key": "body",
-                  "role": "group"
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
                 }
               ],
               "description": "This can't be undone.",

@@ -20,6 +20,7 @@ pub struct HeadlessRun {
     pub(crate) end: f64,
     pub(crate) desktop: Option<PathBuf>,
     pub(crate) windows: std::sync::Arc<std::sync::Mutex<Vec<WindowFrame>>>,
+    pub(crate) clipboard: crate::clipboard::MemoryClipboard,
 }
 
 /// Where a `--desktop` run drew one window from time `t` on.
@@ -36,6 +37,16 @@ pub struct WindowFrame {
 }
 
 impl HeadlessRun {
+    /// The run's clipboard, in memory and shared by every window. A copy lands here (the OS
+    /// clipboard is never touched), so a `Tx::copy_checked` callback hears `Ok(())` and the app
+    /// can show its "Copied" state in a `--snap` or `--script` run; [`MemoryClipboard::text`]
+    /// reads what was copied, and [`MemoryClipboard::fail_writes`] makes later copies answer
+    /// `Err` to show the failure path. A paste reads it too.
+    ///
+    /// [`MemoryClipboard::text`]: crate::clipboard::MemoryClipboard::text
+    /// [`MemoryClipboard::fail_writes`]: crate::clipboard::MemoryClipboard::fail_writes
+    pub fn clipboard(&self) -> &crate::clipboard::MemoryClipboard { &self.clipboard }
+
     /// The `--desktop` backdrop, when the run composites every window over it.
     pub fn desktop(&self) -> Option<&Path> { self.desktop.as_deref() }
 
@@ -134,6 +145,9 @@ pub enum ScriptEvent {
     /// `{"type": "file-dialog", "path": …}`: the file chosen in the open file dialog, or None
     /// for `{"type": "file-dialog-cancel"}`.
     FileDialog(Option<std::path::PathBuf>),
+    /// `{"type": "file-dialog", "paths": […]}`: the files chosen in the open file dialog, in
+    /// order (an empty list cancels it).
+    FileDialogFiles(Vec<std::path::PathBuf>),
     /// `{"drag_files": …}`: a file drag from another app moved over the window.
     DragFiles { paths: Vec<std::path::PathBuf>, at: ScriptPoint },
     /// `{"drop_files": …}`: files dropped on the window.
@@ -179,8 +193,11 @@ pub enum ScriptPoint {
     At(f32, f32),
     /// The centre of the element with this key (or path suffix), found when the event runs.
     Element(String),
-    /// An offset from the last pointer-down position (drags, the release of a tap).
+    /// An offset from the last pointer-down position (a drag's moves and release).
     FromDown(f32, f32),
+    /// Wherever the pointer is when the event runs (the release of a tap or click, or an `up`
+    /// with no position).
+    Pointer,
 }
 
 static RUN: AtomicPtr<HeadlessRun> = AtomicPtr::new(std::ptr::null_mut());

@@ -264,6 +264,7 @@ impl<S: 'static> Runtime<S> {
             cancelled: false,
             window: [x, y],
             screen: self.screen_at(x, y),
+            kind: self.pointer_kind(),
         };
         let path = n.path.clone();
         self.drag_out_armed = self.drags_out(n);
@@ -321,7 +322,7 @@ impl<S: 'static> Runtime<S> {
         }
         self.link_up(&path, x, y);
         if has_press && self.capture_inside && !selected {
-            self.queue.push(Action::Press(path.clone(), button));
+            self.queue.push(Action::Press(path.clone(), button, d.kind));
         }
         // Only clicks pair: a press that dragged or was held past the interval is neither half.
         let click = !self.press_moved && self.now_clock() - self.press_down_t <= self.double_click_interval;

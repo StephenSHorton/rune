@@ -101,6 +101,18 @@ pub enum PointerButton {
     Other(u16),
 }
 
+/// What drove a press, drag or pointer event: a mouse (or trackpad), or a finger on a
+/// touchscreen. A tap can open what a mouse opens on hover. A pen arrives as whatever the
+/// platform sends it as (a touch, or the mouse); keyboard and accessibility presses read
+/// `Mouse`.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum PointerKind {
+    #[default]
+    Mouse,
+    Touch,
+}
+
 impl PointerButton {
     /// Its bit in [`CanvasInput::buttons`]; none for the primary and secondary buttons.
     pub(crate) fn bit(self) -> u8 {
@@ -208,4 +220,9 @@ impl Tx {
     /// [`PointerButton::Primary`] unless the element opted in to others with
     /// [`El::pointer_buttons`]. Other handlers see `Primary`.
     pub fn button(&self) -> PointerButton { self.button }
+
+    /// In `on_press` and `on_drag`, whether a mouse or a finger drove it
+    /// ([`Drag::pointer_kind`](crate::Drag::pointer_kind) says the same). Other handlers see
+    /// `Mouse`; `on_pointer_move_local` and `on_secondary_press` read [`PointerEvent::kind`](crate::PointerEvent).
+    pub fn pointer_kind(&self) -> PointerKind { self.pointer_kind }
 }

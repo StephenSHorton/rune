@@ -80,6 +80,8 @@ impl Image {
 
 enum Input {
     Encoded(Arc<[u8]>),
+    /// `ImageCache::load_raster`: encoded bytes that may not be SVG.
+    Raster(Arc<[u8]>),
     Rgba(u32, u32, Arc<[u8]>),
     Icon(std::path::PathBuf, u32),
     Svg(Arc<[u8]>, u32),
@@ -96,6 +98,8 @@ impl Input {
     fn decode(self) -> Result<Decoded, ImageError> {
         match self {
             Input::Encoded(bytes) => decode(&bytes),
+            Input::Raster(bytes) if is_svg(&bytes) => Err(ImageError("not a raster image: SVG and SVGZ are refused".into())),
+            Input::Raster(bytes) => decode(&bytes),
             Input::Rgba(w, h, bytes) => mip_chain(w, h, &bytes),
             Input::Svg(bytes, px) => svg_rgba(&bytes, px).and_then(|(w, h, bytes)| mip_chain(w, h, &bytes)),
             #[cfg(not(target_arch = "wasm32"))]
@@ -169,7 +173,8 @@ impl ImageCache {
         Self { entries: Mutex::new(HashMap::new()), jobs }
     }
 
-    /// PNG, JPEG, modern ICNS containing a PNG representation, or SVG (plain or gzipped SVGZ,
+    /// PNG, JPEG, WebP (lossy or lossless, the first frame of an animated one), GIF (its first
+    /// frame), modern ICNS containing a PNG representation, or SVG (plain or gzipped SVGZ,
     /// recognised by its content). An SVG rasterizes at twice its own size; use
     /// [`ImageCache::svg`] to rasterize it at the size it draws at. Legacy ICNS codecs return an
     /// explicit error; callers can provide platform-decoded RGBA instead.
@@ -180,6 +185,18 @@ impl ImageCache {
         hash.update(&bytes);
         let id = *hash.finalize().as_bytes();
         self.request(id, Input::Encoded(bytes))
+    }
+
+    /// [`ImageCache::load`] for bytes from outside the app (an upload, a message, a web page):
+    /// PNG, JPEG, WebP, GIF or ICNS only. SVG or gzipped SVGZ content fails the image with an
+    /// [`ImageError`] instead of being parsed and rasterized, so untrusted bytes never reach
+    /// the SVG parser. Everything else decodes as `load` does, with the same size limits.
+    pub fn load_raster(&self, bytes: impl Into<Arc<[u8]>>) -> Image {
+        let bytes = bytes.into();
+        let mut hash = blake3::Hasher::new();
+        hash.update(b"rune-raster\0");
+        hash.update(&bytes);
+        self.request(*hash.finalize().as_bytes(), Input::Raster(bytes))
     }
 
     /// SVG or SVGZ bytes rasterized to fit `size_pt` points square at `scale` device pixels per
@@ -658,6 +675,8 @@ pub(crate) use from_url::font_file;
 
 #[cfg(test)]
 mod mip_tests;
+#[cfg(test)]
+mod raster_tests;
 
 #[cfg(test)]
 mod tests {
@@ -774,6 +793,27 @@ mod tests {
         }
         assert!(mip_chain(0, 1, &[]).is_err());
         assert!(mip_chain(1, 1, &[0]).is_err());
+    }
+
+    #[test]
+    fn webp_and_the_first_frame_of_a_gif_decode() {
+        let source = image::RgbaImage::from_fn(6, 3, |x, _| image::Rgba([x as u8 * 40, 90, 200, 255]));
+        let mut webp = std::io::Cursor::new(Vec::new());
+        source.write_to(&mut webp, image::ImageFormat::WebP).unwrap();
+        let d = decode(&webp.into_inner()).unwrap();
+        assert_eq!((d.mips[0].width, d.mips[0].height), (6, 3));
+
+        // Two frames, red then blue: only the first shows.
+        let frame = |c: [u8; 4]| image::Frame::new(image::RgbaImage::from_pixel(4, 2, image::Rgba(c)));
+        let mut gif = Vec::new();
+        {
+            let mut encoder = image::codecs::gif::GifEncoder::new(&mut gif);
+            encoder.encode_frames([frame([255, 0, 0, 255]), frame([0, 0, 255, 255])]).unwrap();
+        }
+        let d = decode(&gif).unwrap();
+        assert_eq!((d.mips[0].width, d.mips[0].height), (4, 2));
+        let first = &d.mips[0].pixels[..4];
+        assert!(first[0] > 200 && first[2] < 50, "the first frame, red: {first:?}");
     }
 
     #[test]

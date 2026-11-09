@@ -44,12 +44,14 @@ pub(super) fn caret_index(e: &crate::edit::TextEdit, content: &str) -> usize {
     }
 }
 
-/// Parley line alignment for a text node: only wrapped text aligns per line.
+/// Parley line alignment for a text node: wrapped text and text with line breaks align each
+/// line, wrapped text inside its wrap width and unwrapped text inside its widest line.
 pub(super) fn line_alignment(spec: &TextSpec) -> parley::Alignment {
+    let lines = spec.wrap || matches!(spec.align, Align::Center | Align::End) && spec.content.contains('\n');
     match spec.align {
         _ if spec.wrap && spec.justify => parley::Alignment::Justify,
-        Align::Center if spec.wrap => parley::Alignment::Center,
-        Align::End if spec.wrap => parley::Alignment::End,
+        Align::Center if lines => parley::Alignment::Center,
+        Align::End if lines => parley::Alignment::End,
         _ => parley::Alignment::Start,
     }
 }
@@ -68,11 +70,12 @@ pub(super) fn text_extent(n: &Node, spec: &TextSpec, layout: &Layout<Ink>, r: [f
         (crate::text::spec_height(layout, spec.style, scale, spec.exact_lines) / scale).min(r[3] - n.inset[1] - n.inset[3])), origin)
 }
 
-/// Where a `width`-wide text line starts between `x0` and `x1`. Wrapped text aligns each line
-/// inside the wrap width itself, so it starts at `x0`.
+/// Where a `width`-wide text block starts between `x0` and `x1`. Wrapped text aligns each line
+/// inside the wrap width itself, so it starts at `x0`; unwrapped lines align inside the block,
+/// which aligns in the box.
 pub(super) fn text_x(spec: &TextSpec, x0: f32, x1: f32, width: f32) -> f32 {
     match spec.align {
-        _ if line_alignment(spec) != parley::Alignment::Start => x0,
+        _ if spec.wrap && line_alignment(spec) != parley::Alignment::Start => x0,
         Align::Start => x0,
         Align::Center => x0 + (x1 - x0 - width) * 0.5,
         Align::End => x1 - width,

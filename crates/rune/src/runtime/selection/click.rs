@@ -173,6 +173,7 @@ impl<S: 'static> Runtime<S> {
             cancelled: false,
             window: [x, y],
             screen: self.screen_at(x, y),
+            kind: self.pointer_kind(),
         };
         self.capture = Some((path, d));
         self.capture_button = crate::PointerButton::Primary;

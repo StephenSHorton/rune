@@ -187,6 +187,12 @@ impl El {
         self.style.set_max_height(length(h));
         self
     }
+    /// At most as tall as the parent's content box (CSS `max-height: 100%`), so a column with
+    /// a shrinking scroll viewport inside scrolls instead of running past a bounded parent.
+    pub fn max_h_full(mut self) -> Self {
+        self.style.set_max_height(percent(1.0));
+        self
+    }
     /// Separate row and column gaps (CSS `row-gap`, `column-gap`).
     pub fn gaps(mut self, row: f32, column: f32) -> Self {
         self.style.set_gap(column, row);

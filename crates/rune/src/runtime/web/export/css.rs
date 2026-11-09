@@ -316,11 +316,13 @@ pub(super) fn svg(shape: &crate::Shape, size: (f32, f32)) -> String {
                 let d = &mut fill.get_or_insert_with(|| (*c, String::new())).1;
                 let _ = write!(d, "M{}Z", points(pts).replace(' ', "L"));
             }
-            crate::shape::Op::Stroke { points: pts, closed, width, cap, color: c } => {
+            crate::shape::Op::Stroke { points: pts, closed, width, cap, color: c, dash } => {
                 flush(&mut out, &mut fill);
                 let el = if *closed { "polygon" } else { "polyline" };
                 let cap = if *cap == crate::shape::LineCap::Round { "round" } else { "butt" };
-                let _ = write!(out, "<{el} fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" stroke-linecap=\"{cap}\" stroke-linejoin=\"round\" vector-effect=\"non-scaling-stroke\" points=\"{}\"/>",
+                // SVG's offset slides the pattern back along the line; Rune's slides it on.
+                let dash = dash.map_or(String::new(), |d| format!(" stroke-dasharray=\"{} {}\" stroke-dashoffset=\"{}\"", num(d.on), num(d.off), num(-d.offset)));
+                let _ = write!(out, "<{el} fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" stroke-linecap=\"{cap}\" stroke-linejoin=\"round\" vector-effect=\"non-scaling-stroke\"{dash} points=\"{}\"/>",
                     color(*c), num(*width), points(pts));
             }
         }

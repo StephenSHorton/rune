@@ -162,3 +162,54 @@ fn a_shown_zone_leaving_hears_its_leave() {
     assert_eq!(leaving(0.05, false), [true, false], "through its exit");
     assert_eq!(leaving(0.05, true), [true, false], "at once");
 }
+
+/// The pointer leaves while a press is held: the release outside reports the leave (after its
+/// grace), not a fresh enter from where the press started.
+fn pressable_view(_: &Vec<bool>, _: &mut Cx<Vec<bool>>) -> El {
+    col().w_full().h_full().child(
+        el().key("zone").w(16.0).h(100.0)
+            .on_press(|_: &mut Vec<bool>| {})
+            .on_hover_change(|s: &mut Vec<bool>, inside, _| s.push(inside))
+            .hover_delays(Duration::from_millis(40), Duration::from_millis(100)),
+    )
+}
+
+fn pressable() -> Runtime<Vec<bool>> {
+    let mut rt = Runtime::new(Vec::new(), pressable_view, (200.0, 200.0), Env::new(true, 1.0));
+    rt.frame(0.0);
+    rt.pointer_move(100.0, 50.0);
+    rt.frame(0.0);
+    rt
+}
+
+#[test]
+fn a_release_outside_reports_the_leave() {
+    // Shown, then pressed and dragged out.
+    let mut rt = pressable();
+    rt.pointer_move(8.0, 50.0);
+    rt.frame(0.05);
+    assert_eq!(rt.state, [true]);
+    rt.pointer_down(8.0, 50.0);
+    rt.frame(0.02);
+    rt.pointer_move(100.0, 50.0);
+    rt.frame(0.02);
+    rt.pointer_up(100.0, 50.0);
+    rt.frame(0.09);
+    assert_eq!(rt.state, [true], "the leave waits out its grace");
+    rt.frame(0.02);
+    assert_eq!(rt.state, [true, false]);
+    rt.frame(0.5);
+    assert_eq!(rt.state, [true, false]);
+
+    // Pressed before the enter landed: nothing to report either way.
+    let mut rt = pressable();
+    rt.pointer_move(8.0, 50.0);
+    rt.frame(0.02);
+    rt.pointer_down(8.0, 50.0);
+    rt.frame(0.08);
+    rt.pointer_move(100.0, 50.0);
+    rt.frame(0.02);
+    rt.pointer_up(100.0, 50.0);
+    rt.frame(0.5);
+    assert!(rt.state.is_empty(), "{:?}", rt.state);
+}

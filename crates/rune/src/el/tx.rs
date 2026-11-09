@@ -36,6 +36,8 @@ pub struct Tx {
     /// The viewport moved only because the window's own resize animation stepped it.
     pub(crate) window_step: bool,
     pub(crate) copy: Option<crate::ClipboardWrite>,
+    /// `Tx::copy_checked`'s callback for `copy`.
+    pub(crate) copy_report: Option<crate::clipboard::report::CopyReport>,
     pub(crate) paste: bool,
     pub(crate) clipboard_reads: Vec<ClipboardRead>,
     pub(crate) pick_reads: Vec<PickRead>,
@@ -74,6 +76,8 @@ pub struct Tx {
     pub(crate) window_frame: Option<crate::window::frame::FrameRequest>,
     /// The mouse button driving this press or drag (`Tx::button`).
     pub(crate) button: crate::PointerButton,
+    /// What drove this press or drag (`Tx::pointer_kind`).
+    pub(crate) pointer_kind: crate::PointerKind,
     /// Modifier keys held as the handler runs.
     pub(crate) mods: crate::Mods,
     pub(crate) srgb_blend: Option<bool>,

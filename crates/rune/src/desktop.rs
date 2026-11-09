@@ -254,6 +254,7 @@ pub(crate) fn run(windows: Vec<AnyWindowSpec>, selected: usize, args: Args, acce
         end: timeline.last_frame as f64 * timeline.dt,
         desktop: Some(backdrop.clone()),
         windows: frames_log.clone(),
+        clipboard: crate::clipboard::memory(),
     });
 
     let mut members: Vec<Box<dyn Member>> = windows.into_iter().enumerate()
@@ -351,6 +352,7 @@ pub(crate) fn run(windows: Vec<AnyWindowSpec>, selected: usize, args: Args, acce
                 Pos::Key(key) => desk.find(key).unwrap_or_else(|| die(&format!("script: no element with key {key:?} in a visible window"))),
                 Pos::Rel(_, _) if e.kind.at_pointer() => desk.pointer().unwrap_or((0.0, 0.0)),
                 Pos::Rel(dx, dy) => (last_down.0 + dx, last_down.1 + dy),
+                Pos::Pointer => desk.pointer().unwrap_or(last_down),
             };
             let (x, y) = at();
             match &e.kind {
@@ -364,10 +366,11 @@ pub(crate) fn run(windows: Vec<AnyWindowSpec>, selected: usize, args: Args, acce
                     let i = open.or(desk.key).unwrap_or(selected);
                     desk.members[i].resolve_popup(picked.as_deref()).unwrap_or_else(|e| die(&format!("script pop-up menu: {e}")));
                 }
-                Kind::FileDialog(path) => {
+                Kind::FileDialog(_) | Kind::FileDialogFiles(_) => {
+                    let paths = match &e.kind { Kind::FileDialog(path) => path.iter().cloned().collect(), Kind::FileDialogFiles(paths) => paths.clone(), _ => unreachable!() };
                     let open = desk.key.into_iter().chain(desk.z.iter().rev().copied()).find(|&i| desk.members[i].file_dialog_open());
                     let i = open.or(desk.key).unwrap_or(selected);
-                    desk.members[i].resolve_file_dialog(path.clone()).unwrap_or_else(|e| die(&format!("script file dialog: {e}")));
+                    desk.members[i].resolve_file_dialog(paths).unwrap_or_else(|e| die(&format!("script file dialog: {e}")));
                 }
                 // While another app is active, as after a click on the backdrop, keys go to it.
                 Kind::Key(..) | Kind::KeyUp(_) | Kind::Physical(_) | Kind::PhysicalKey(..) | Kind::Paste(_) => {

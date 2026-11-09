@@ -18,6 +18,7 @@ use crate::{Runtime, Waker};
 
 mod content;
 mod html;
+pub(crate) mod report;
 pub(crate) mod tx;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -40,15 +41,17 @@ pub struct ClipboardWrite {
     content: ClipboardContent,
     clear_after: Option<Duration>,
     secret: Option<Arc<Unwritten>>,
+    /// `Tx::copy_checked`: who hears whether it was written.
+    pub(crate) report: Option<report::Report>,
 }
 impl ClipboardWrite {
     pub(crate) fn new(content: ClipboardContent) -> Self {
-        Self { content, clear_after: None, secret: None }
+        Self { content, clear_after: None, secret: None, report: None }
     }
     /// Secrets are plain text only: no HTML or RTF copy of a password lingers.
     pub(crate) fn secret(text: String, clear_after: Duration) -> (Self, SecretCopy) {
         let slot = Arc::new(Slot::default());
-        let write = Self { content: ClipboardContent::new(text), clear_after: Some(clear_after), secret: Some(Arc::new(Unwritten(slot.clone()))) };
+        let write = Self { content: ClipboardContent::new(text), clear_after: Some(clear_after), secret: Some(Arc::new(Unwritten(slot.clone()))), report: None };
         (write, SecretCopy(slot))
     }
     /// Everything this write puts on the clipboard.
@@ -57,6 +60,10 @@ impl ClipboardWrite {
     fn slot(&self) -> Option<&Arc<Slot>> { self.secret.as_ref().map(|u| &u.0) }
     fn bind(&self, route: Route) {
         if let Some(slot) = self.slot() { let _ = slot.route.set(route); }
+    }
+    /// Tells a checked copy's handler how its write went.
+    fn report(&self, result: &Result<(), String>) {
+        if let Some(report) = &self.report { report.send(result.clone()); }
     }
 }
 impl std::ops::Deref for ClipboardWrite {
@@ -214,11 +221,13 @@ pub(crate) struct Client {
     wake: Waker,
     /// A secret copy's state changed on the worker: run a frame so the app's poll sees it.
     changed: Arc<AtomicBool>,
+    /// Checked copies' outcomes (`Tx::copy_checked`).
+    outcomes: report::Outcomes,
 }
 impl Default for Client {
     fn default() -> Self {
         let (sender, replies) = mpsc::channel();
-        Self { sender, replies, wake: std::sync::Arc::new(|| {}), changed: Arc::default() }
+        Self { sender, replies, wake: std::sync::Arc::new(|| {}), changed: Arc::default(), outcomes: report::Outcomes::default() }
     }
 }
 impl Client {
@@ -234,7 +243,12 @@ impl Client {
     pub fn receive<S: 'static>(&self, rt: &mut Runtime<S>) -> bool {
         let mut received = self.changed.swap(false, Ordering::SeqCst);
         for reply in self.replies.try_iter() { deliver(rt, reply); received = true; }
+        for (id, result) in self.outcomes.receiver.try_iter() { rt.copy_result(id, result); received = true; }
         received
+    }
+    /// Sends a checked copy's outcome back to this client.
+    fn route_report(&self, copy: &mut ClipboardWrite) {
+        if let Some(report) = &mut copy.report { report.to = Some((self.outcomes.sender.clone(), self.wake.clone())); }
     }
 }
 
@@ -252,7 +266,9 @@ pub(crate) fn flush_memory<S: 'static>(rt: &mut Runtime<S>) {
     if std::mem::take(&mut rt.clear_secret_request) { m.handle(Request::Clear(None)); }
     if let Some(copy) = rt.copy_request.take() {
         copy.bind(Route::Memory(m.clone()));
-        m.handle(Request::Write(copy, None));
+        let report = copy.report.as_ref().map(|r| r.id);
+        let result = m.ticked(|core, board| core.write(board, copy, None));
+        if let Some(id) = report { rt.copy_result(id, result); }
     }
     let paste = rt.paste_request.take().map(|target| Purpose::paste(rt, target));
     let reads = paste.into_iter().chain(std::mem::take(&mut rt.read_requests).into_iter().map(Purpose::Read));
@@ -378,7 +394,7 @@ impl Core {
 
     fn handle<B: Backend>(&mut self, cb: &mut B, request: Request) {
         match request {
-            Request::Write(copy, notify) => self.write(cb, copy, notify),
+            Request::Write(copy, notify) => { let _ = self.write(cb, copy, notify); }
             Request::Clear(which) => self.clear(cb, which.as_ref()),
             Request::Read { purpose, reply, wake } => {
                 if let Some(answer) = self.answer(cb, purpose) && reply.send(answer).is_ok() { wake(); }
@@ -407,15 +423,18 @@ impl Core {
         Some(reply)
     }
 
-    fn write<B: Backend>(&mut self, cb: &mut B, copy: ClipboardWrite, notify: Option<Notify>) {
+    /// Writes `copy`, telling a checked copy how it went, and returns that.
+    fn write<B: Backend>(&mut self, cb: &mut B, copy: ClipboardWrite, notify: Option<Notify>) -> Result<(), String> {
         let slot = copy.slot().cloned();
         let notify = notify.filter(|_| slot.is_some());
         let cancelled = |slot: &Option<Arc<Slot>>| slot.as_ref().is_some_and(|s| s.cancel.load(Ordering::SeqCst));
-        if cancelled(&slot) { return; } // `Unwritten` settles it as cleared.
-        if let Err(error) = cb.write(&copy) {
-            if let Some(s) = &slot { s.set(SecretState::Failed(error)); }
+        if cancelled(&slot) { return Ok(()); } // `Unwritten` settles it as cleared.
+        let written = cb.write(&copy);
+        copy.report(&written);
+        if let Err(error) = written {
+            if let Some(s) = &slot { s.set(SecretState::Failed(error.clone())); }
             if let Some(n) = &notify { n.send(); }
-            return;
+            return Err(error);
         }
         self.release(SecretState::Replaced);
         let rev = cb.revision();
@@ -446,6 +465,7 @@ impl Core {
             if let Some(n) = &notify { n.send(); }
             if cancelled(&slot) { self.clear(cb, slot.as_ref()); }
         }
+        Ok(())
     }
 
     fn release(&mut self, state: SecretState) {

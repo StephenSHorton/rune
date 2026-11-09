@@ -87,7 +87,10 @@ state; `.current(..).on_choose(..)` binds selection. It filters case-insensitive
 ArrowUp/Down and Ctrl-N/P across enabled rows, scrolls keyboard choices into view, and ignores
 selection keys during IME composition. Escape closes it. A keystroke's rows and the popover's
 height land in its frame; `.animate_filtering(true)` crossfades the rows and springs the
-height instead. `PopupList`, the list it shares with `@`-mention and `/`-command popovers,
+height instead. `PopupList::at_caret("composer")` (and `Popover::at_caret`) hangs the list from
+the focused field's caret instead of the field's edge, following it as the person types, and
+`.header("At most 10 mentions")` puts a muted heading line above the rows that is never an
+option. `PopupList`, the list it shares with `@`-mention and `/`-command popovers,
 takes the same switch, so rows an app's commit changes land at once even when the field it
 follows animates its layout. The contract follows OpenCode's
 `components/list` and `use-filtered-list`; Rune's fuzzy ranking
@@ -115,7 +118,39 @@ RadioGroup/RadioItem, TextInput, TextArea, TextField (older), Field, Select (inl
 triggers, grouped), Popover, Menu (compact and standard, checkbox/radio items, submenus,
 context menus via `.at(x, y)`), Tooltip (compact, standard, large), HoverCard, Toast and
 ToastRegion, Card, List, Accordion, Collapsible, Badge, Divider, Keybind, Spinner, Loader,
-Progress, ProgressCircle, SegmentedControl.
+Progress, ProgressCircle, SegmentedControl, Slider, Avatar, Skeleton, ColorSwatch and
+ColorPicker. `rune-kit--extras` in the gallery shows the last five with the state badges and
+tinted buttons.
+
+- `Slider::new(v).range(min, max).step(s).label("Volume").on_change(|s: &mut App, v, tx| ..)`
+  drags (keeping the grab offset), jumps on a track press, steps on the arrow, Page and
+  Home/End keys, and puts a cancelled drag back; `.on_commit` hears only settled values.
+- `Avatar::new(name).image(&pixels).status(colour)` shows initials on a colour picked from the
+  name until the picture has pixels; `.shape(AvatarShape::Rounded)` squares it.
+- `Skeleton::new().width(w).height(h)` (or `Skeleton::circle(d)`) pulses while content loads and
+  holds still under reduced motion. `Progress::indeterminate()` sweeps; `.height`, `.color`,
+  `.track` and `.radius` (0 for square ends) restyle a bar, and `.label_hidden()` keeps its
+  label for assistive technology only.
+- `ColorPicker::new(key, &s.picker, |s: &mut App| &mut s.picker).value(c).hue(true).on_change(..)`
+  is preset swatches, a hex field and a hue slider; `.on_commit(..)` hears settled picks only
+  (`ColorPickerState::take_pending` for one typed when the picker hides); `ColorSwatch` is one chip, and
+  `.opener(open)` makes it a picker's trigger button.
+- `BadgeVariant::{Success, Warning, Danger, Info}` take the kit's `StateColors`; `Badge::pill`,
+  `.height`, `.padding`, `.border_width`, `.max_width` and `.plain` make a chip.
+  `IconButtonVariant::{Danger, Success}` colour the icon on the neutral button and
+  `{GhostDanger, GhostSuccess}` on a ghost one; `.glyph_size` sets the icon's size.
+  `Button::tint(fill, ink)` / `IconButton::tint` paint a button in an app's own colours.
+- `Avatar::new(name)` takes `.letter_size`, `.letter_weight`, `.single_initial` and `.help`.
+- A field `Select`'s listbox is at least as wide as its trigger (`.menu_width(w)` sets it);
+  `Popover` and `HoverCard` take `.max_width` / `.min_width`.
+- `HoverCard::hover(&s.card, |s: &mut App| &mut s.card)` opens the card after the pointer
+  rests on its trigger and keeps it open while the pointer is over the trigger or the card
+  (`.delays(open, close)`, 700 / 300 ms by default).
+
+`Button::new(label).wrap()` lets a long label wrap onto centred lines when the built button's
+width is bounded (`.build(&k).max_w(240.0)`); the button grows taller from its control height.
+`Dialog` wraps a long title and description beside its close button, and a `.fit()` dialog is
+at most as tall as the window, its body scrolling under the header.
 
 `Button::new(label).rolling("import-label")` rolls the label's changed characters
 (`RollingText`) and springs the button's width with it; `.label_with(|font, ink| ..)` draws any

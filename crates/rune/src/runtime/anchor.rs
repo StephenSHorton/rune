@@ -13,6 +13,15 @@ pub(super) fn step_up(nodes: &[Node], i: usize) -> Option<usize> {
     nodes[i].above.as_ref().and_then(|a| anchor_index(nodes, i, a)).or(nodes[i].parent)
 }
 
+/// The caret line `[x0, y0, x1, y1]` of the focused field at `path` or inside it, from `caret`
+/// (the focused field's path and `[x, y, w, h]`): what an `El::anchored_to_caret` overlay sits
+/// beside.
+pub(super) fn caret_under(caret: &Option<(String, [f32; 4])>, path: &str) -> Option<[f32; 4]> {
+    let (at, r) = caret.as_ref()?;
+    let under = at.strip_prefix(path).is_some_and(|rest| rest.is_empty() || rest.starts_with('/'));
+    under.then(|| [r[0], r[1], r[0] + r[2], r[1] + r[3]])
+}
+
 /// How far an anchored overlay stays inside the window.
 const MARGIN: f32 = 8.0;
 
@@ -75,6 +84,19 @@ fn fit_bound(a: &Anchor, t: [f32; 4], len: f32, vp: (f32, f32)) -> Option<f32> {
 }
 
 impl<S: 'static> Measurement<'_, S> {
+    /// The rect anchored overlay anchor `a` places it beside, at anchor node `j`: the caret line
+    /// for a caret anchor over a focused field, else `j` where it is scrolled (and stuck) to. A
+    /// caret anchor makes this commit watch the caret, so it is measured again when it moves.
+    fn anchor_target(&mut self, nodes: &[Node], j: usize, a: &Anchor) -> [f32; 4] {
+        if a.caret {
+            self.caret_read = true;
+            if let Some(c) = caret_under(&self.caret, &nodes[j].path) {
+                return c;
+            }
+        }
+        sticky::anchored_target(nodes, self.scrolls, j, self.viewport)
+    }
+
     /// Places every node from `taffy`'s layout: ids, local and window rects, insets, and
     /// anchored overlays beside their anchors.
     pub(super) fn place(&mut self, taffy: &LayoutEngine, nodes: &mut [Node]) {
@@ -98,7 +120,7 @@ impl<S: 'static> Measurement<'_, S> {
                 && let Some(j) = anchor_index(&nodes, i, a)
             {
                 // Anchors inside scroll viewports sit where they are scrolled (and stuck) to.
-                let target = sticky::anchored_target(nodes, self.scrolls, j, self.viewport);
+                let target = self.anchor_target(nodes, j, a);
                 (x, y) = anchor_position(a, target, (l.w, l.h), self.viewport);
                 nodes[i].local.x = x - px;
                 nodes[i].local.y = y - py;
@@ -110,15 +132,15 @@ impl<S: 'static> Measurement<'_, S> {
 
     /// Bounds each placed `anchored_fit` overlay that fits on neither side of its anchor to the
     /// larger room, through its style. True when any changed, so layout runs again.
-    pub(super) fn fit_anchored(&self, taffy: &mut LayoutEngine, nodes: &[Node]) -> bool {
+    pub(super) fn fit_anchored(&mut self, taffy: &mut LayoutEngine, nodes: &[Node]) -> bool {
         let mut changed = false;
         for (i, n) in nodes.iter().enumerate() {
             let Some(a) = n.above.as_ref().filter(|a| a.fit) else { continue };
             let Some(j) = anchor_index(&nodes, i, a) else { continue };
-            let target = sticky::anchored_target(nodes, self.scrolls, j, self.viewport);
+            let target = self.anchor_target(nodes, j, a);
             // It draws `k` times its layout size beside where the anchor draws.
             let k = inherited_zoom(nodes, i, &|m: &Node| m.static_scale).max(MIN_ZOOM);
-            let target = if k == 1.0 { target } else { zoomed_rect(nodes, self.scrolls, j, target, self.viewport) };
+            let target = if k == 1.0 || a.caret { target } else { zoomed_rect(nodes, self.scrolls, j, target, self.viewport) };
             let zoomed;
             let a = if k == 1.0 { a } else { zoomed = zoomed_gap(a, k); &zoomed };
             let vertical = matches!(a.side, Side::Top | Side::Bottom);
@@ -234,7 +256,13 @@ impl<S: 'static> Runtime<S> {
         let tracked = |m: &Node| if m.scale_track { self.scene.get(m.id, P_SCALE).unwrap_or(m.static_scale) } else { m.static_scale };
         let k = inherited_zoom(&self.nodes, i, &tracked).max(MIN_ZOOM);
         let d = self.drawn[j];
-        let target = if d != [0.0; 4] { [d[0], d[1], d[0] + d[2], d[1] + d[3]] } else {
+        let caret = a.caret.then(|| caret_under(&self.caret, &self.nodes[j].path)).flatten();
+        let target = if let Some(c) = caret {
+            // The caret rides any motion of the field from its laid-out place.
+            let t = sticky::anchored_target(&self.nodes, &self.scrolls, j, self.viewport);
+            let (dx, dy) = if d != [0.0; 4] { (d[0] - t[0], d[1] - t[1]) } else { (0.0, 0.0) };
+            [c[0] + dx, c[1] + dy, c[2] + dx, c[3] + dy]
+        } else if d != [0.0; 4] { [d[0], d[1], d[0] + d[2], d[1] + d[3]] } else {
             let t = sticky::anchored_target(&self.nodes, &self.scrolls, j, self.viewport);
             if k == 1.0 { t } else { zoomed_rect(&self.nodes, &self.scrolls, j, t, self.viewport) }
         };

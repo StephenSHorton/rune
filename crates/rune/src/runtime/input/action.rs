@@ -24,7 +24,7 @@ pub(super) enum Action {
     DrawnLayout(String, [f32; 4], bool),
     /// `El::on_visible`: the element came on screen or left it.
     Visible(String, bool),
-    Press(String, crate::PointerButton),
+    Press(String, crate::PointerButton, crate::PointerKind),
     DoublePress(String),
     Link(String, usize),
     /// `El::on_link_secondary`: the text, its link and the press.
@@ -48,8 +48,10 @@ pub(super) enum Action {
     Paste(crate::ClipboardContent, Option<Option<String>>),
     /// A `Tx::read_clipboard` callback's id and what the clipboard held.
     ClipboardRead(u64, crate::ClipboardContent),
+    /// A `Tx::copy_checked` callback's id and how the write went.
+    ClipboardCopied(u64, Result<(), String>),
     /// A `Tx::open_file` or `Tx::save_file` callback's id and the dialog's answer.
-    FileDialog(u64, crate::file_dialog::FileDialogResult),
+    FileDialog(u64, crate::file_dialog::FileDialogFilesResult),
     Focus(String, f32, f32),
     Blur,
     /// What assistive technology asked of an element (`a11y/actions.rs`).
@@ -135,7 +137,7 @@ pub(super) fn live_only_handler(action: &Action) -> Option<&'static str> {
 #[cfg(debug_assertions)]
 pub(super) fn action_path(action: &Action) -> Option<&str> {
     match action {
-        Action::PointerMove(path, _) | Action::DrawnLayout(path, ..) | Action::Layout(path, _) | Action::Hover(path) | Action::HoverChange(path, _) | Action::SelectionChange(path, _) | Action::Press(path, _) | Action::DoublePress(path)
+        Action::PointerMove(path, _) | Action::DrawnLayout(path, ..) | Action::Layout(path, _) | Action::Hover(path) | Action::HoverChange(path, _) | Action::SelectionChange(path, _) | Action::Press(path, ..) | Action::DoublePress(path)
         | Action::Link(path, _) | Action::LinkSecondary(path, ..) | Action::SecondaryPress(path, _) | Action::Drag(path, ..) | Action::DragRepeat(path, ..) | Action::DragStart(path)
         | Action::DragEnd(path, _) | Action::Visible(path, _) => Some(path),
         Action::Wheel(_, chain, _) | Action::Gesture(chain, _) => chain.first().map(String::as_str),
@@ -158,6 +160,7 @@ fn handler_name(action: &Action) -> &'static str {
         Action::Ime(_) => "a text input's edit",
         Action::Paste(..) => "on_paste",
         Action::ClipboardRead(..) => "a `read_clipboard` callback",
+        Action::ClipboardCopied(..) => "a `copy_checked` callback",
         Action::FileDialog(..) => "a file dialog callback",
         _ => "a handler",
     })
@@ -194,9 +197,9 @@ pub(super) fn merge(tx: &mut Tx, one: Tx) {
     tx.popups.extend(one.popups);
     tx.file_dialogs.extend(one.file_dialogs);
     if let Some(request) = one.window_frame { tx.window_frame = Some(tx.window_frame.unwrap_or_default().merge(request)); }
-    if one.clear_secret && tx.copy.as_ref().is_some_and(crate::ClipboardWrite::is_secret) { tx.copy = None; }
+    if one.clear_secret && tx.copy.as_ref().is_some_and(crate::ClipboardWrite::is_secret) { tx.copy = None; tx.copy_report = None; }
     tx.clear_secret |= one.clear_secret;
-    if one.copy.is_some() { tx.copy = one.copy; }
+    if one.copy.is_some() { tx.copy = one.copy; tx.copy_report = one.copy_report; }
     tx.shell = tx.shell.max(one.shell);
     tx.minimize |= one.minimize;
     tx.toggle_maximized |= one.toggle_maximized;
@@ -389,10 +392,11 @@ impl<S: 'static> Runtime<S> {
                 one.select_from_change = one.select.is_some();
                 true
             }
-            Action::Press(path, button) => {
+            Action::Press(path, button, kind) => {
                 let Some(f) = self.node(&path).and_then(|n| n.handlers.on_press.clone()) else { return false };
                 log_event!(self, "press {path}");
                 one.button = button;
+                one.pointer_kind = kind;
                 f(states!(self), &mut one);
                 true
             }
@@ -417,6 +421,7 @@ impl<S: 'static> Runtime<S> {
                     one.instant = true;
                 }
                 one.button = button;
+                one.pointer_kind = d.kind;
                 one.drag_repeat = repeat;
                 d.data = if d.phase == Phase::Down { 0.0 } else { self.drag_data };
                 f(states!(self), &mut d, &mut one);
@@ -488,6 +493,11 @@ impl<S: 'static> Runtime<S> {
                 let Some(i) = self.clipboard_reads.iter().position(|(read, _)| *read == id) else { return false };
                 let (_, f) = self.clipboard_reads.remove(i);
                 f(states!(self), &content, &mut one);
+                true
+            }
+            Action::ClipboardCopied(id, result) => {
+                let Some(f) = self.copy_reports.take(id) else { return false };
+                f(states!(self), result, &mut one);
                 true
             }
             Action::FileDialog(id, result) => self.run_file_dialog(id, result, &mut one),

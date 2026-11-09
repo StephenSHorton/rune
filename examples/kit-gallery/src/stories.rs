@@ -10,6 +10,7 @@ use crate::G;
 mod combobox;
 mod controls;
 mod display;
+mod extras;
 mod icons;
 mod inputs;
 mod markdown;
@@ -37,6 +38,10 @@ macro_rules! stories {
                 s.edits[7] = TextEdit::new("/");
                 s.edits[7].focused = true;
             }
+            if $id == "rune-popup-list--at-caret" {
+                s.edits[7] = TextEdit::new("Ask @an");
+                s.edits[7].focused = true;
+            }
             s.open = OPENED.iter().find(|(id, _)| *id == $id).map(|(_, k)| (*k).to_owned());
         }),)*];
     };
@@ -48,6 +53,7 @@ const OPENED: &[(&str, &str)] = &[
     ("ui-dialog--basic", "dialog"),
     ("rune-dialog--fit", "dialog-fit"),
     ("rune-popup-list--composer", "popup-list"),
+    ("rune-popup-list--at-caret", "popup-list"),
     ("ui-menu--basic", "menu"),
     ("ui-menu--rich", "menu"),
     ("ui-menu--with-checkbox", "menu"),
@@ -204,6 +210,7 @@ stories! {
     "rune-text--truncate-middle" => text_truncate_middle,
     "rune-dialog--fit" => dialog_fit,
     "rune-popup-list--composer" => popup_list_composer,
+    "rune-popup-list--at-caret" => popup_list_at_caret,
     "rune-scroll-bar--basic" => scroll_bar_basic,
     "rune-scroll-bar--grow" => scroll_bar_grow,
     "components-file-icon--samples" => icons::file_icon_samples,
@@ -213,6 +220,7 @@ stories! {
     "rune-file-icon--catalog" => icons::file_icon_catalog,
     "rune-tree-icon--catalog" => icons::tree_icon_catalog,
     "rune-tree--files" => icons::file_tree,
+    "rune-kit--extras" => extras::kit_extras,
 }
 
 fn popup_list_composer(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
@@ -256,6 +264,28 @@ fn popup_list_composer(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
         .animate_edit_layout()
         .on_edit(|s: &mut G| &mut s.edits[7])
         .on_change(|s: &mut G, _| { s.open = Some("popup-list".into()); s.pick.insert("popup-list".into(), "0".into()); })
+        .build(k)
+        .key("composer")
+}
+
+/// An `@`-mention picker under the caret, not the field's edge, with a heading above its rows.
+fn popup_list_at_caret(s: &G, k: &Kit, layer: &mut Vec<El>) -> El {
+    let people = ["Ana Silva", "Andrei Popescu", "Anika Rao", "Brook Lane"];
+    let q = s.edits[7].text.rsplit('@').next().unwrap_or_default().to_lowercase();
+    let items: Vec<_> = people.iter().filter(|p| p.to_lowercase().starts_with(&q)).map(|p| PopupItem::new(*p, *p)).collect();
+    PopupList::<G>::new("popup-list", "composer")
+        .at_caret("composer")
+        .placement(Placement::BottomStart)
+        .open(is_open(s, "popup-list"))
+        .width(220.0)
+        .header("People")
+        .items(items)
+        .active(Some(0))
+        .build(k, layer);
+    TextInput::new(&s.edits[7])
+        .width(Some(320.0))
+        .on_edit(|s: &mut G| &mut s.edits[7])
+        .on_change(|s: &mut G, _| s.open = Some("popup-list".into()))
         .build(k)
         .key("composer")
 }

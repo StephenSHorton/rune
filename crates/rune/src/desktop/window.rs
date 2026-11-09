@@ -66,7 +66,7 @@ pub(crate) trait Member {
     fn popup_open(&self) -> bool;
     fn resolve_popup(&mut self, picked: Option<&str>) -> Result<(), crate::PopupMenuError>;
     fn file_dialog_open(&self) -> bool;
-    fn resolve_file_dialog(&mut self, path: Option<std::path::PathBuf>) -> Result<(), crate::FileDialogError>;
+    fn resolve_file_dialog(&mut self, paths: Vec<std::path::PathBuf>) -> Result<(), crate::FileDialogError>;
     /// Draws its frame into `slot`, `px` device pixels.
     fn render(&mut self, gpu: &Gpu, slot: &Slot, px: (u32, u32), dt: f64, update_ms: f64);
     fn backdrop_dark(&self) -> Option<bool>;
@@ -130,6 +130,7 @@ impl<S: 'static> Window<S> {
         let size = own.size.unwrap_or(spec.size);
         let dark = own.theme.as_deref() != Some("light");
         let mut rt = crate::tooling::runtime_for(&spec, state, size, Env::new(dark, scale), Arc::new(|| {}));
+        if let Some(run) = crate::tooling::headless_run::headless_run() { rt.use_clipboard(run.clipboard()); }
         crate::playground::attach(&mut rt, playground, &spec, own.playground.clone(), own.variant.clone(), false);
         rt.on_focus = on_focus;
         rt.app_ime.hook = on_ime;
@@ -330,7 +331,7 @@ impl<S: 'static> Member for Window<S> {
             Kind::Wheel(dx, dy) => crate::tooling::wheel(rt, (x, y), *dx, *dy),
             Kind::Fling(vx, vy) => crate::tooling::fling(rt, (x, y), *vx, *vy),
             Kind::Files(step) => crate::tooling::file_input(rt, step, (x, y)),
-            Kind::Mark(_) | Kind::Reopen | Kind::Menu(_) | Kind::PopupMenu(_) | Kind::FileDialog(_) | Kind::Shortcut(_) => {}
+            Kind::Mark(_) | Kind::Reopen | Kind::Menu(_) | Kind::PopupMenu(_) | Kind::FileDialog(_) | Kind::FileDialogFiles(_) | Kind::Shortcut(_) => {}
             kind => { crate::tooling::canvas_input(rt, kind, (x, y)); }
         }
     }
@@ -367,7 +368,7 @@ impl<S: 'static> Member for Window<S> {
     fn popup_open(&self) -> bool { self.rt.popup_menu().is_some() }
     fn resolve_popup(&mut self, picked: Option<&str>) -> Result<(), crate::PopupMenuError> { self.rt.resolve_popup(picked) }
     fn file_dialog_open(&self) -> bool { self.rt.file_dialog().is_some() }
-    fn resolve_file_dialog(&mut self, path: Option<std::path::PathBuf>) -> Result<(), crate::FileDialogError> { self.rt.resolve_file_dialog(path) }
+    fn resolve_file_dialog(&mut self, paths: Vec<std::path::PathBuf>) -> Result<(), crate::FileDialogError> { self.rt.resolve_file_dialog_files(paths) }
 
     fn render(&mut self, gpu: &Gpu, slot: &Slot, px: (u32, u32), dt: f64, update_ms: f64) {
         let format = if self.rt.srgb_blend() { OFFSCREEN_FORMAT.remove_srgb_suffix() } else { OFFSCREEN_FORMAT };

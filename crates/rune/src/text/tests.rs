@@ -177,9 +177,49 @@ fn ui_monospace_in_the_mono_slot_is_system_mono() {
     assert_eq!(spans.last(), block.last(), "the span shapes with the code block's font");
     assert_eq!(fonts(&mut ts, "code", &[], TextStyle::new(13.0, 400.0).mono()), block);
     if !ts.system_mono().is_empty() {
-        let mut plain = TextSystem::new(&[], ("Inter", "Inter"));
-        assert_ne!(fonts(&mut plain, "see code", code, TextStyle::new(13.0, 400.0)).last(), block.last());
+        // A monospaced face of the app's own in the slot keeps it.
+        let mut own = TextSystem::new(&[INTER, PLEX_MONO], ("Inter", "IBM Plex Mono"));
+        assert_ne!(fonts(&mut own, "see code", code, TextStyle::new(13.0, 400.0)).last(), block.last());
     }
+}
+
+const INTER: &[u8] = include_bytes!("../../assets/Inter-Regular.ttf");
+const PLEX_MONO: &[u8] = include_bytes!("../../assets/IBMPlexMono-Regular.ttf");
+
+/// With no monospaced face of the app's in the mono slot (the default slot is the sans, or the
+/// app named a family it didn't register), `Family::Mono` and mono spans take the platform's
+/// monospaced font, as `Family::SystemMono` does, instead of the proportional sans.
+#[test]
+fn mono_without_a_monospaced_slot_takes_the_system_mono_font() {
+    let width = |ts: &mut TextSystem, text: &str, spans: &[Span], style: TextStyle| ts.layout_rich(text, spans, style, 2.0, None).full_width();
+    let mono = TextStyle::new(13.0, 400.0).mono();
+    for families in [("Inter", "Inter"), ("Inter", "Some Unregistered Mono")] {
+        let mut ts = TextSystem::new(&[], families);
+        if ts.system_mono().is_empty() {
+            eprintln!("skipping: no system monospaced font installed");
+            return;
+        }
+        let (narrow, wide) = (width(&mut ts, "iiiiiiii", &[], mono), width(&mut ts, "MMMMMMMM", &[], mono));
+        assert!((narrow - wide).abs() < 0.5, "{families:?}: {narrow} vs {wide}");
+        let system = width(&mut ts, "iiiiiiii", &[], TextStyle::new(13.0, 400.0).family(Family::SystemMono));
+        assert!((narrow - system).abs() < 0.5, "the same face as SystemMono: {narrow} vs {system}");
+        let span = &[Span { mono: true, ..Span::new(0, 8) }];
+        let spanned = width(&mut ts, "iiiiiiii", span, TextStyle::new(13.0, 400.0));
+        assert!((spanned - narrow).abs() < 0.5, "a mono span too: {spanned} vs {narrow}");
+        assert!(width(&mut ts, "iiiiiiii", &[], TextStyle::new(13.0, 400.0)) < narrow * 0.7, "the sans stays proportional");
+    }
+    // An app's own monospaced face stays the mono slot, and choosing new families asks again.
+    let mut ts = TextSystem::new(&[INTER, PLEX_MONO], ("Inter", "IBM Plex Mono"));
+    assert!(!ts.mono_falls_back());
+    assert!(ts.set_families("Inter", "Inter"));
+    assert!(ts.mono_falls_back());
+}
+
+#[test]
+fn a_fixed_pitch_face_is_monospaced_and_a_proportional_one_is_not() {
+    let face = |bytes: &'static [u8]| FontRef::from_index(bytes, 0).unwrap();
+    assert!(super::mono_fallback::is_monospaced(face(PLEX_MONO)));
+    assert!(!super::mono_fallback::is_monospaced(face(INTER)));
 }
 
 /// With no monospace font to stand for `ui-monospace`, the mono slot falls back to sans

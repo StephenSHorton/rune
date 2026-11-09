@@ -300,6 +300,9 @@ pub(crate) enum Pos {
     Key(String),
     /// Relative to the last pointer-down position.
     Rel(f32, f32),
+    /// Wherever the pointer is when the event runs: a release lands where the hand is, so a
+    /// move during a tap's hold isn't undone by its up.
+    Pointer,
 }
 
 #[derive(Clone, Debug)]
@@ -314,6 +317,8 @@ pub(crate) enum Kind {
     PopupMenu(Option<String>),
     /// Answers the open file dialog: the chosen path, or `None` to cancel it.
     FileDialog(Option<PathBuf>),
+    /// Answers the open file dialog with `"paths"`: the chosen files, or none to cancel it.
+    FileDialogFiles(Vec<PathBuf>),
     Physical(crate::PhysicalInput),
     /// A registered global shortcut, delivered only to its handler.
     Shortcut(crate::Shortcut),
@@ -414,6 +419,7 @@ impl Ev {
             Pos::Xy(x, y) => ScriptPoint::At(*x, *y),
             Pos::Key(key) => ScriptPoint::Element(key.clone()),
             Pos::Rel(dx, dy) => ScriptPoint::FromDown(*dx, *dy),
+            Pos::Pointer => ScriptPoint::Pointer,
         };
         let pointer = |action| ScriptEvent::Pointer { action, at: at() };
         let event = match &self.kind {
@@ -423,6 +429,7 @@ impl Ev {
             Kind::Menu(item) => ScriptEvent::Menu(item.clone()),
             Kind::PopupMenu(picked) => ScriptEvent::PopupMenu(picked.clone()),
             Kind::FileDialog(path) => ScriptEvent::FileDialog(path.clone()),
+            Kind::FileDialogFiles(paths) => ScriptEvent::FileDialogFiles(paths.clone()),
             Kind::Physical(input) => ScriptEvent::Physical(*input),
             Kind::Shortcut(chord) => ScriptEvent::Shortcut(chord.clone()),
             Kind::Move => pointer(PointerAction::Move),
@@ -508,3 +515,12 @@ mod window_tests;
 #[cfg(test)]
 #[path = "tooling/tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "tooling/headless_clipboard_tests.rs"]
+mod headless_clipboard_tests;
+#[cfg(test)]
+#[path = "tooling/script_release_tests.rs"]
+mod script_release_tests;
+#[cfg(test)]
+#[path = "tooling/tree_caret_tests.rs"]
+mod tree_caret_tests;

@@ -37,11 +37,15 @@ fn properties(menu: &[TrayItem], id: i32) -> HashMap<String, OwnedVariant> {
     let mut map = HashMap::new();
     if id == ROOT { map.insert("children-display".into(), OwnedVariant::from(zbus::Str::from_static("submenu"))); return map; }
     match menu.get(id as usize - 1) {
-        Some(TrayItem::Action { label, enabled, .. }) => {
-            map.insert("label".into(), OwnedVariant::from(zbus::Str::from(label.clone())));
-            if !enabled { map.insert("enabled".into(), OwnedVariant::from(false)); }
-        }
         Some(TrayItem::Separator) => { map.insert("type".into(), OwnedVariant::from(zbus::Str::from_static("separator"))); }
+        Some(item) => {
+            if let Some(label) = item.label() { map.insert("label".into(), OwnedVariant::from(zbus::Str::from(label.to_owned()))); }
+            if !item.is_enabled() { map.insert("enabled".into(), OwnedVariant::from(false)); }
+            if let Some(checked) = item.is_checked() {
+                map.insert("toggle-type".into(), OwnedVariant::from(zbus::Str::from_static("checkmark")));
+                map.insert("toggle-state".into(), OwnedVariant::from(checked as i32));
+            }
+        }
         None => {}
     }
     map
@@ -97,9 +101,8 @@ struct Menu { model: Shared, on_event: Handler }
 impl Menu {
     fn clicked(&self, id: i32, event: &str) {
         if event != "clicked" || id <= ROOT { return; }
-        let picked = match self.model.lock().unwrap().menu.get(id as usize - 1) {
-            Some(TrayItem::Action { id, enabled: true, .. }) => id.clone(),
-            _ => return,
+        let Some(picked) = self.model.lock().unwrap().menu.get(id as usize - 1).and_then(|item| item.picked().map(str::to_owned)) else {
+            return;
         };
         (self.on_event)(TrayEvent::Menu(picked));
     }
@@ -247,6 +250,16 @@ mod tests {
         assert!(properties(&menu, 2).contains_key("type"));
         assert!(properties(&menu, 3).contains_key("enabled"));
         assert!(properties(&menu, 9).is_empty());
+    }
+
+    #[test]
+    fn a_check_item_is_a_dbusmenu_checkmark_toggle() {
+        let menu = vec![TrayItem::check("a", "On", true), TrayItem::check("b", "Off", false)];
+        let on = properties(&menu, 1);
+        assert_eq!(on.get("toggle-type"), Some(&OwnedVariant::from(zbus::Str::from_static("checkmark"))));
+        assert_eq!(on.get("toggle-state"), Some(&OwnedVariant::from(1i32)));
+        assert_eq!(properties(&menu, 2).get("toggle-state"), Some(&OwnedVariant::from(0i32)));
+        assert!(!properties(&[TrayItem::action("x", "X")], 1).contains_key("toggle-type"));
     }
 
     #[test]
